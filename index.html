@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vendor PO Generator — The Crowd Controller</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; }
+    header span { font-size: 0.8rem; opacity: 0.6; }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .tab-btn {
+      padding: 10px 28px;
+      border: 2px solid #d0d5dd;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: #666;
+      transition: all 0.15s;
+    }
+    .tab-btn.active { background: #1a1a2e; border-color: #1a1a2e; color: #fff; }
+
+    /* Card */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      padding: 28px;
+      margin-bottom: 24px;
+    }
+    .card h2 { font-size: 1rem; font-weight: 700; margin-bottom: 6px; color: #1a1a2e; }
+    .card .hint { font-size: 0.82rem; color: #888; margin-bottom: 16px; line-height: 1.5; }
+
+    /* Instructions box */
+    .instructions {
+      background: #eef2f9;
+      border-left: 4px solid #4a6fa5;
+      border-radius: 0 8px 8px 0;
+      padding: 14px 18px;
+      margin-bottom: 18px;
+      font-size: 0.85rem;
+      line-height: 1.7;
+      color: #333;
+    }
+    .instructions strong { color: #1a1a2e; }
+
+    /* Paste area */
+    .paste-area {
+      width: 100%;
+      min-height: 180px;
+      padding: 14px;
+      border: 2px solid #d0d5dd;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-family: monospace;
+      resize: vertical;
+      line-height: 1.5;
+      color: #333;
+      background: #fafafa;
+      transition: border-color 0.15s;
+    }
+    .paste-area:focus { outline: none; border-color: #4a6fa5; background: #fff; }
+
+    .btn-parse {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      background: #4a6fa5;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      margin-top: 14px;
+      transition: background 0.15s;
+    }
+    .btn-parse:hover { background: #3a5a8a; }
+
+    /* Fields */
+    .fields-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 600px) { .fields-grid { grid-template-columns: 1fr; } }
+
+    .field-group { display: flex; flex-direction: column; gap: 4px; }
+    .field-group label { font-size: 0.75rem; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+    .field-group input, .field-group textarea {
+      padding: 9px 12px;
+      border: 1px solid #d0d5dd;
+      border-radius: 7px;
+      font-size: 0.9rem;
+      font-family: inherit;
+      resize: vertical;
+    }
+    .field-group input:focus, .field-group textarea:focus {
+      outline: none;
+      border-color: #4a6fa5;
+      box-shadow: 0 0 0 3px rgba(74,111,165,0.15);
+    }
+
+    /* Items table */
+    .items-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .items-table th {
+      background: #f0f2f5;
+      padding: 8px 10px;
+      text-align: left;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .items-table td { padding: 6px 10px; border-bottom: 1px solid #f0f0f0; }
+    .items-table td input {
+      width: 100%;
+      padding: 5px 8px;
+      border: 1px solid #e0e0e0;
+      border-radius: 5px;
+      font-size: 0.88rem;
+    }
+    .btn-add-row {
+      margin-top: 10px;
+      padding: 6px 14px;
+      font-size: 0.82rem;
+      background: #f0f2f5;
+      border: 1px solid #d0d5dd;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn-del-row {
+      padding: 3px 8px;
+      background: #fee;
+      border: 1px solid #fcc;
+      border-radius: 4px;
+      color: #c00;
+      cursor: pointer;
+      font-size: 0.78rem;
+    }
+    .options-row td {
+      padding: 2px 10px 10px 10px;
+      background: #fafafa;
+      border-bottom: 2px solid #e8eaf0;
+    }
+    .options-input {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px dashed #c0c8d8;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-family: inherit;
+      resize: vertical;
+      background: #fff;
+      color: #444;
+      min-height: 48px;
+    }
+    .options-input:focus {
+      outline: none;
+      border-color: #4a6fa5;
+      border-style: solid;
+    }
+    .options-label {
+      font-size: 0.7rem;
+      color: #aaa;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      margin-bottom: 3px;
+      display: block;
+    }
+
+    /* PO Output */
+    .po-output-wrap { position: relative; }
+    .po-output {
+      font-family: "Georgia", "Times New Roman", serif;
+      font-size: 0.92rem;
+      background: #fff;
+      border: 1px solid #c8cdd6;
+      border-radius: 8px;
+      padding: 36px 40px;
+      min-height: 200px;
+      line-height: 1.7;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    /* PO document internals */
+    .po-logo {
+      font-family: "Georgia", serif;
+      font-size: 1.4rem;
+      font-weight: bold;
+      color: #1a3a7c;
+      text-align: center;
+      letter-spacing: 0.5px;
+      margin-bottom: 24px;
+      padding-bottom: 14px;
+      border-bottom: 2px solid #1a3a7c;
+    }
+    .po-top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .po-to { font-size: 1rem; }
+    .po-meta-right { text-align: right; font-size: 0.92rem; }
+    .po-label { font-weight: bold; font-family: "Georgia", serif; }
+    .po-shipto {
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+    .po-shipto-block {
+      margin-top: 4px;
+      margin-left: 0;
+      color: #222;
+    }
+    .po-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 24px;
+      font-size: 0.9rem;
+    }
+    .po-table thead tr {
+      background: #1a3a7c;
+      color: #fff;
+    }
+    .po-table thead th {
+      padding: 9px 12px;
+      text-align: left;
+      font-weight: bold;
+      font-family: "Georgia", serif;
+      letter-spacing: 0.3px;
+    }
+    .po-table thead th:last-child { text-align: center; }
+    .po-table tbody tr:nth-child(odd) { background: #f5f7fb; }
+    .po-table tbody td {
+      padding: 9px 12px;
+      vertical-align: top;
+      border-bottom: 1px solid #e0e4ec;
+    }
+    .po-table tbody td:last-child { text-align: center; font-weight: bold; }
+    .po-option {
+      display: block;
+      font-size: 0.83rem;
+      color: #555;
+      font-style: italic;
+    }
+    .po-notes { margin-top: 8px; font-size: 0.9rem; }
+    .po-divider { border: none; border-top: 1px solid #d0d5dd; margin: 20px 0; }
+    .po-logo-img { max-height: 64px; max-width: 280px; display: block; margin: 0 auto 4px; }
+
+    /* Settings panel */
+    .settings-toggle {
+      background: none;
+      border: none;
+      color: #4a6fa5;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .settings-toggle:hover { color: #1a1a2e; }
+    .settings-body { display: none; }
+    .settings-body.open { display: block; }
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 600px) { .settings-grid { grid-template-columns: 1fr; } }
+    .logo-upload-zone {
+      border: 2px dashed #c0c8d8;
+      border-radius: 8px;
+      padding: 14px;
+      text-align: center;
+      cursor: pointer;
+      background: #f8f9fc;
+      position: relative;
+      font-size: 0.82rem;
+      color: #888;
+      transition: border-color 0.15s;
+      margin: 6px 0 10px;
+    }
+    .logo-upload-zone:hover { border-color: #4a6fa5; color: #4a6fa5; }
+    .logo-upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .logo-preview-img {
+      max-height: 48px;
+      max-width: 200px;
+      display: none;
+      margin: 6px auto 10px;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      padding: 4px;
+    }
+    .settings-url-input {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid #d0d5dd;
+      border-radius: 6px;
+      font-size: 0.83rem;
+    }
+    .btn-copy {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      padding: 6px 16px;
+      background: #1a1a2e;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn-copy:hover { background: #4a6fa5; }
+    .btn-copy.copied { background: #28a745; }
+
+    .btn-generate {
+      display: block;
+      width: 100%;
+      padding: 13px;
+      background: #2d6a4f;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 700;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      margin-bottom: 16px;
+    }
+    .btn-generate:hover { background: #1b4332; }
+
+    .error-msg {
+      background: #fee;
+      border: 1px solid #fcc;
+      color: #c00;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.85rem;
+      margin-top: 12px;
+      display: none;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #d4edda;
+      color: #1b4332;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Vendor PO Generator <span class="badge">Free — No API</span></h1>
+  <span>The Crowd Controller</span>
+</header>
+
+<div class="container">
+
+  <!-- Settings -->
+  <div class="card" style="margin-bottom:16px;">
+    <button class="settings-toggle" onclick="toggleSettings(this)">⚙ Logo Settings</button>
+    <div class="settings-body" id="settingsBody">
+      <div class="settings-grid">
+        <div>
+          <div class="field-group"><label>Shopify PO — Logo</label></div>
+          <div class="logo-upload-zone" onclick="">
+            <input type="file" accept="image/*" onchange="uploadLogo(this,'shopify')" />
+            Click to upload logo
+          </div>
+          <img id="shopifyLogoPreview" class="logo-preview-img" />
+          <div class="field-group" style="margin-top:6px;">
+            <label>Website URL</label>
+            <input class="settings-url-input" id="shopifyUrl" type="url"
+              placeholder="https://www.thecrowdcontroller.com"
+              onchange="saveLogoUrl('shopify', this.value)" />
+          </div>
+        </div>
+        <div>
+          <div class="field-group"><label>Volusion PO — Logo</label></div>
+          <div class="logo-upload-zone">
+            <input type="file" accept="image/*" onchange="uploadLogo(this,'volusion')" />
+            Click to upload logo
+          </div>
+          <img id="volusionLogoPreview" class="logo-preview-img" />
+          <div class="field-group" style="margin-top:6px;">
+            <label>Website URL</label>
+            <input class="settings-url-input" id="volusionUrl" type="url"
+              placeholder="https://www.example.com"
+              onchange="saveLogoUrl('volusion', this.value)" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Module Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('shopify', this)">Shopify</button>
+    <button class="tab-btn" onclick="switchTab('volusion', this)">Volusion</button>
+  </div>
+
+  <!-- Paste Card -->
+  <div class="card">
+    <h2 id="pasteTitle">Paste Shopify Order Text</h2>
+
+    <div class="instructions" id="instructions">
+      <strong>How to copy your order:</strong><br>
+      1. Open the order page in Shopify Admin<br>
+      2. Press <strong>Cmd+A</strong> to select all, then <strong>Cmd+C</strong> to copy<br>
+      3. Click in the box below and press <strong>Cmd+V</strong> to paste<br>
+      4. Click <strong>Parse Order</strong>
+    </div>
+
+    <textarea class="paste-area" id="pasteArea" placeholder="Paste your Shopify order page text here…"></textarea>
+
+    <div class="error-msg" id="errorMsg"></div>
+
+    <button class="btn-parse" onclick="parseOrder()">Parse Order</button>
+  </div>
+
+  <!-- Editable Fields Card -->
+  <div class="card" id="fieldsCard" style="display:none;">
+    <h2>Extracted Order Details</h2>
+    <p class="hint">Review and edit any fields before generating the PO.</p>
+
+    <div class="fields-grid">
+      <div class="field-group">
+        <label>Vendor Name</label>
+        <input type="text" id="fVendor" placeholder="Mr. Chain" />
+      </div>
+      <div class="field-group">
+        <label>PO Number</label>
+        <input type="text" id="fPoNum" placeholder="002407-TCC" />
+      </div>
+      <div class="field-group">
+        <label>Date</label>
+        <input type="text" id="fDate" placeholder="05/01/2026" />
+      </div>
+      <div class="field-group">
+        <label>Ship To — Name</label>
+        <input type="text" id="fName" placeholder="George Barber" />
+      </div>
+      <div class="field-group">
+        <label>Company (optional)</label>
+        <input type="text" id="fCompany" placeholder="Cleveland Museum of Art" />
+      </div>
+      <div class="field-group">
+        <label>Street Address</label>
+        <input type="text" id="fStreet" placeholder="4824 Pine Dr" />
+      </div>
+      <div class="field-group">
+        <label>City, State, Zip</label>
+        <input type="text" id="fCityStateZip" placeholder="Raleigh NC 27604" />
+      </div>
+      <div class="field-group">
+        <label>Country</label>
+        <input type="text" id="fCountry" placeholder="United States" />
+      </div>
+      <div class="field-group">
+        <label>Phone</label>
+        <input type="text" id="fPhone" placeholder="+1 919-817-5069" />
+      </div>
+    </div>
+
+    <h2 style="margin-bottom:10px;">Line Items</h2>
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th style="width:90px">Code</th>
+          <th>Item Description</th>
+          <th style="width:60px">Qty</th>
+          <th style="width:40px"></th>
+        </tr>
+      </thead>
+      <tbody id="itemsBody"></tbody>
+    </table>
+    <button class="btn-add-row" onclick="addItemRow()">+ Add Row</button>
+
+    <div class="field-group" style="margin-top:16px;">
+      <label>Notes</label>
+      <textarea id="fNotes" rows="2" placeholder="Leave blank or add special instructions"></textarea>
+    </div>
+  </div>
+
+  <!-- PO Output Card -->
+  <div class="card" id="outputCard" style="display:none;">
+    <h2>Generated Vendor PO Email</h2>
+    <button class="btn-generate" onclick="generatePO()">Regenerate PO</button>
+    <div class="po-output-wrap">
+      <button class="btn-copy" id="btnCopy" onclick="copyPO()">Copy</button>
+      <div class="po-output" id="poOutput"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let currentTab = 'shopify';
+
+  // ── Logo settings ─────────────────────────────────────────
+  (function initLogos() {
+    ['shopify','volusion'].forEach(mod => {
+      const logo = localStorage.getItem(`logo_${mod}`);
+      const url  = localStorage.getItem(`logoUrl_${mod}`);
+      if (logo) showLogoPreview(mod, logo);
+      if (url)  { const el = document.getElementById(`${mod}Url`); if (el) el.value = url; }
+    });
+  })();
+
+  function toggleSettings(btn) {
+    const body = document.getElementById('settingsBody');
+    body.classList.toggle('open');
+    btn.textContent = body.classList.contains('open') ? '⚙ Logo Settings ▲' : '⚙ Logo Settings';
+  }
+
+  function uploadLogo(input, mod) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      localStorage.setItem(`logo_${mod}`, e.target.result);
+      showLogoPreview(mod, e.target.result);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function showLogoPreview(mod, dataUrl) {
+    const img = document.getElementById(`${mod}LogoPreview`);
+    if (!img) return;
+    img.src = dataUrl;
+    img.style.display = 'block';
+  }
+
+  function saveLogoUrl(mod, url) {
+    localStorage.setItem(`logoUrl_${mod}`, url);
+  }
+
+  function getLogoHtml(mod) {
+    const logo = localStorage.getItem(`logo_${mod}`);
+    const url  = localStorage.getItem(`logoUrl_${mod}`) || '#';
+    if (logo) {
+      return `<a href="${url}" target="_blank" style="display:block;text-align:center;">
+        <img src="${logo}" class="po-logo-img" alt="Company Logo" />
+      </a>`;
+    }
+    return `<div class="po-logo">${url !== '#' ? url : 'www.thecrowdcontroller.com'}</div>`;
+  }
+
+  // ── Tabs ─────────────────────────────────────────────────
+  function switchTab(tab, btn) {
+    currentTab = tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const pasteTitle = { shopify: 'Paste Shopify Order Text', volusion: 'Paste Volusion Order Text' };
+    document.getElementById('pasteTitle').textContent = pasteTitle[tab];
+
+    const instrShopify = `<strong>How to copy your order:</strong><br>
+      1. Open the order page in Shopify Admin<br>
+      2. Press <strong>Cmd+A</strong> to select all, then <strong>Cmd+C</strong> to copy<br>
+      3. Click in the box below and press <strong>Cmd+V</strong> to paste<br>
+      4. Click <strong>Parse Order</strong>`;
+
+    const instrVolusion = `<strong>How to copy your order:</strong><br>
+      1. Open the order details page in Volusion Admin<br>
+      2. Press <strong>Cmd+A</strong> to select all, then <strong>Cmd+C</strong> to copy<br>
+      3. Click in the box below and press <strong>Cmd+V</strong> to paste<br>
+      4. Click <strong>Parse Order</strong>`;
+
+    document.getElementById('instructions').innerHTML = tab === 'shopify' ? instrShopify : instrVolusion;
+    document.getElementById('pasteArea').value = '';
+    document.getElementById('fieldsCard').style.display = 'none';
+    document.getElementById('outputCard').style.display = 'none';
+    document.getElementById('errorMsg').style.display = 'none';
+  }
+
+  // ── Parse ─────────────────────────────────────────────────
+  function parseOrder() {
+    const text = document.getElementById('pasteArea').value.trim();
+    if (!text) { showError('Please paste your order text first.'); return; }
+    hideError();
+
+    const parsed = currentTab === 'shopify' ? parseShopify(text) : parseVolusion(text);
+    populateFields(parsed);
+  }
+
+  // ── Shopify Parser ────────────────────────────────────────
+  // Handles Shopify's copy-paste format where SKU, ×, and qty are each on their own line
+  // and variants are "Select X:\nValue" pairs
+  function parseShopify(text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+    // Order number — e.g. #002407-TCC
+    const orderMatch = text.match(/#([\w-]+)/);
+    const orderNum = orderMatch ? orderMatch[1] : '';
+
+    // Date — "May 1, 2026 at ..." format
+    const MONTHS = { January:'01', February:'02', March:'03', April:'04', May:'05',
+                     June:'06', July:'07', August:'08', September:'09', October:'10',
+                     November:'11', December:'12' };
+    let date = '';
+    const dateMatch = text.match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(\d{4})/);
+    if (dateMatch) {
+      date = `${MONTHS[dateMatch[1]]}/${dateMatch[2].padStart(2,'0')}/${dateMatch[3]}`;
+    }
+
+    // Shipping address — block after "Shipping address" label
+    let name = '', company = '', street = '', cityStateZip = '', country = '', phone = '';
+    const shipIdx = lines.findIndex(l => /^shipping address$/i.test(l));
+    if (shipIdx !== -1) {
+      const block = lines.slice(shipIdx + 1, shipIdx + 9);
+      name = block[0] || '';
+      // Match "City ST 12345" pattern — requires state abbreviation before zip to avoid
+      // matching bare 5-digit street numbers like "11150 East Blvd"
+      const zipLine = block.findIndex(l => /\b[A-Z]{2}\s+\d{5}(-\d{4})?\b/.test(l));
+      if (zipLine !== -1) {
+        const midLines = block.slice(1, zipLine);
+        if (midLines.length >= 2) {
+          company = midLines.slice(0, -1).join(', ');
+          street = midLines[midLines.length - 1];
+        } else {
+          street = midLines[0] || '';
+        }
+        cityStateZip = block[zipLine];
+        const afterZip = block[zipLine + 1] || '';
+        if (afterZip && !/^\+?\d/.test(afterZip)) {
+          country = afterZip;
+          phone = block[zipLine + 2] || '';
+        } else {
+          phone = afterZip;
+        }
+      }
+    }
+
+    // Line items
+    // Shopify copy format:
+    //   "Image for [product name]"  (optional alt text line)
+    //   "[product name]"
+    //   "SKU"
+    //   "[sku value]"
+    //   "Unit price$XX.XX"
+    //   "×"
+    //   "[qty]"
+    //   "Total$XX.XX"
+    //   "Select [Option Name]:"
+    //   "[Option Value]"
+    //   ...
+    const items = [];
+    const UI_NOISE = /^(Paid|Unfulfilled|Fulfilled|Refund|Edit|Print|More actions|UPS|USPS|FedEx|DHL|Mark as|Create shipping|Notes|Customer|Contact|Shipping address|View map|Timeline)/i;
+
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i] !== 'SKU') continue;
+
+      const sku = lines[i + 1] || '';
+
+      // Product name: walk back from "SKU" line, skip "Image for ..." lines and UI noise
+      let productName = '';
+      for (let j = i - 1; j >= Math.max(0, i - 5); j--) {
+        const l = lines[j];
+        if (/^Image for /i.test(l)) continue;
+        if (UI_NOISE.test(l)) break;
+        if (l.length > 4) { productName = l; break; }
+      }
+
+      // Qty: find "×" after SKU, then next line is the quantity
+      let qty = '1';
+      for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
+        if (lines[j] === '×') {
+          qty = lines[j + 1] || '1';
+          break;
+        }
+      }
+
+      // Variants: any "Label:\nValue" pair after the item, until next SKU or shipping section
+      // Catches both "Select Metal Finish:\nSatin Stainless" and "Weatherized...:\nYes"
+      const SKIP_LABELS = /^(shipping|address|customer|notes|order|unit price|total|paid|fulfilled|unfulfilled|refund|edit|print|timeline|comment|subtotal|billing)/i;
+      const variants = [];
+      for (let j = i + 1; j < Math.min(i + 40, lines.length); j++) {
+        if (lines[j] === 'SKU') break;
+        if (/^shipping address$/i.test(lines[j])) break;
+        // Match any line ending with ":" as an option label
+        const vm = lines[j].match(/^(.{2,}):$/);
+        if (vm && !SKIP_LABELS.test(vm[1])) {
+          const val = lines[j + 1] || '';
+          if (val && val !== 'SKU' && !val.startsWith('$') && val.length < 120) {
+            const label = vm[1].replace(/^Select\s+/i, '');
+            variants.push(`${label}: ${val}`);
+            j++; // skip the value line
+          }
+        }
+      }
+
+      items.push({ code: sku, description: productName.trim(), qty, options: variants.join('\n') });
+    }
+
+    // Vendor name — line immediately before the shipping carrier line
+    const UI_WORDS = /^(Unfulfilled|Fulfilled|Paid|Unpaid|Caution|Authorized|Incomplete|Pending|UPS|USPS|FedEx|DHL)/i;
+    let vendor = '';
+    const carrierIdx = lines.findIndex(l => /^(UPS®?|USPS|FedEx|DHL|Canada Post|Purolator)/i.test(l));
+    if (carrierIdx > 0) {
+      const candidate = lines[carrierIdx - 1];
+      if (!UI_WORDS.test(candidate) && candidate.length > 1) vendor = candidate;
+    }
+
+    return { order_number: orderNum, date, vendor, ship_to: { name, company, street, city_state_zip: cityStateZip, country, phone }, items, notes: '' };
+  }
+
+  // ── Volusion Parser ───────────────────────────────────────
+  function parseVolusion(text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+    // Use Customer Order # as PO number (not the internal Purchase Order #)
+    const orderMatch = text.match(/Customer Order #:\s*([\w-]+)/i);
+    const orderNum = orderMatch ? orderMatch[1].trim() : '';
+
+    // Date — already in MM/DD/YYYY format in Volusion
+    const dateMatch = text.match(/Date:\s*([\d\/]+)/i);
+    const date = dateMatch ? dateMatch[1].trim() : '';
+
+    // Vendor — line after "From / Vendor:"
+    let vendor = '';
+    const vendorIdx = lines.findIndex(l => /from\s*\/\s*vendor/i.test(l));
+    if (vendorIdx !== -1) vendor = lines[vendorIdx + 1] || '';
+
+    // Ship To block — split on "Ship To:" since it appears inline with vendor address
+    let name = '', company = '', street = '', cityStateZip = '', country = '', phone = '';
+    const shipToSplit = text.split(/Ship To:/i);
+    if (shipToSplit.length > 1) {
+      const shipBlock = shipToSplit[1]
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l && !/^Ship Via:/i.test(l) && !/^Due Date:/i.test(l) && !/^Code\s/i.test(l));
+
+      name = shipBlock[0] || '';
+      // State + zip pattern handles both "City, ST 12345" and "City ST 12345"
+      const zipLine = shipBlock.findIndex(l => /\b[A-Z]{2}\s+\d{5}(-\d{4})?\b/.test(l));
+      if (zipLine !== -1) {
+        const midLines = shipBlock.slice(1, zipLine);
+        if (midLines.length >= 2) {
+          company = midLines.slice(0, -1).join(', ');
+          street = midLines[midLines.length - 1];
+        } else {
+          street = midLines[0] || '';
+        }
+        cityStateZip = shipBlock[zipLine];
+        // Phone can be "(NXX) NXX-XXXX" or "+1 NXX-NXX-XXXX"
+        const isPhone = l => /^[\+\(]?\d[\d\s\-\(\)\.]{6,}$/.test(l);
+        const afterZip1 = shipBlock[zipLine + 1] || '';
+        const afterZip2 = shipBlock[zipLine + 2] || '';
+        if (isPhone(afterZip1)) {
+          phone = afterZip1;
+        } else {
+          country = afterZip1;
+          phone = isPhone(afterZip2) ? afterZip2 : '';
+        }
+      }
+    }
+
+    // Items — tab-separated table after "Code \t Item \t Qty" header
+    const items = [];
+    const headerIdx = lines.findIndex(l => /^Code\s+Item\s+Qty/i.test(l));
+    if (headerIdx !== -1) {
+      let i = headerIdx + 1;
+      while (i < lines.length) {
+        const line = lines[i];
+        if (/^Notes:/i.test(line) || /^Signed By:/i.test(line)) break;
+
+        const parts = line.split('\t').map(p => p.trim());
+        if (parts.length >= 2 && parts[0] && !/^\[/.test(parts[0])) {
+          const code = parts[0];
+          const desc = parts[1] || '';
+          let qty   = parts[2] || '';
+
+          // Collect bracketed option lines that follow
+          const options = [];
+          let j = i + 1;
+          while (j < lines.length) {
+            const nl = lines[j];
+            if (/^\[/.test(nl)) {
+              if (nl.includes('\t')) {
+                const optParts = nl.split('\t');
+                const cleaned = optParts[0].replace(/^\[/, '').replace(/\]\s*$/, '').replace(/:(?!\s)/, ': ');
+                options.push(cleaned);
+                if (!qty) qty = optParts[1].trim();
+              } else {
+                options.push(nl.replace(/^\[/, '').replace(/\]\s*$/, '').replace(/:(?!\s)/, ': '));
+              }
+              j++;
+            } else if (/^\d+$/.test(nl) && !qty) {
+              qty = nl;
+              j++;
+            } else {
+              break;
+            }
+          }
+          i = j;
+          items.push({ code, description: desc, qty, options: options.join('\n') });
+        } else {
+          i++;
+        }
+      }
+    }
+
+    return { order_number: orderNum, date, vendor, ship_to: { name, company, street, city_state_zip: cityStateZip, country, phone }, items, notes: '' };
+  }
+
+  // Helper: find which line index contains a substring
+  function getLineIndex(lines, substr) {
+    const s = substr.substring(0, 20);
+    return lines.findIndex(l => l.includes(s.trim().substring(0, 15)));
+  }
+
+  // ── Populate fields ───────────────────────────────────────
+  function populateFields(d) {
+    document.getElementById('fVendor').value = d.vendor || '';
+    document.getElementById('fPoNum').value = d.order_number || '';
+    document.getElementById('fDate').value = d.date || '';
+    document.getElementById('fName').value = d.ship_to?.name || '';
+    document.getElementById('fCompany').value = d.ship_to?.company || '';
+    document.getElementById('fStreet').value = d.ship_to?.street || '';
+    document.getElementById('fCityStateZip').value = d.ship_to?.city_state_zip || '';
+    document.getElementById('fCountry').value = d.ship_to?.country || '';
+    document.getElementById('fPhone').value = d.ship_to?.phone || '';
+    document.getElementById('fNotes').value = d.notes || '';
+
+    const tbody = document.getElementById('itemsBody');
+    tbody.innerHTML = '';
+    const items = d.items?.length ? d.items : [{ code: '', description: '', qty: '', options: '' }];
+    items.forEach(i => addItemRow(i.code, i.description, i.qty, i.options || ''));
+
+    document.getElementById('fieldsCard').style.display = 'block';
+    generatePO();
+    document.getElementById('outputCard').style.display = 'block';
+    document.getElementById('outputCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ── Items table ───────────────────────────────────────────
+  function addItemRow(code = '', desc = '', qty = '', options = '') {
+    const tbody = document.getElementById('itemsBody');
+
+    const mainRow = document.createElement('tr');
+    mainRow.className = 'item-main-row';
+    mainRow.innerHTML = `
+      <td><input type="text" value="${esc(code)}" placeholder="SKU" /></td>
+      <td><input type="text" value="${esc(desc)}" placeholder="Item description" /></td>
+      <td><input type="text" value="${esc(qty)}" placeholder="1" style="text-align:center" /></td>
+      <td><button class="btn-del-row" onclick="deleteItemRow(this)">✕</button></td>
+    `;
+    tbody.appendChild(mainRow);
+
+    const optRow = document.createElement('tr');
+    optRow.className = 'options-row';
+    optRow.innerHTML = `
+      <td colspan="4">
+        <span class="options-label">Options / Variants</span>
+        <textarea class="options-input" rows="2" placeholder="(one option per line, e.g. Color: Red)">${esc(options)}</textarea>
+      </td>
+    `;
+    tbody.appendChild(optRow);
+  }
+
+  function deleteItemRow(btn) {
+    const mainRow = btn.closest('tr');
+    const optRow = mainRow.nextElementSibling;
+    if (optRow && optRow.classList.contains('options-row')) optRow.remove();
+    mainRow.remove();
+  }
+
+  function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Generate PO ───────────────────────────────────────────
+  function generatePO() {
+    const vendor  = v('fVendor');
+    const poNum   = v('fPoNum');
+    const date    = v('fDate');
+    const name    = v('fName');
+    const company = v('fCompany');
+    const street  = v('fStreet');
+    const csz     = v('fCityStateZip');
+    const country = v('fCountry');
+    const phone   = v('fPhone');
+    const notes   = v('fNotes');
+
+    const mainRows = [...document.querySelectorAll('#itemsBody tr.item-main-row')];
+    const items = mainRows.map(tr => {
+      const inputs = tr.querySelectorAll('input');
+      const optRow = tr.nextElementSibling;
+      const options = optRow?.querySelector('textarea')?.value.trim() || '';
+      return { code: inputs[0].value.trim(), desc: inputs[1].value.trim(), qty: inputs[2].value.trim(), options };
+    }).filter(i => i.code || i.desc);
+
+    // ── HTML display version ──
+    const addrLines = [name, company, street, csz, country, phone].filter(Boolean);
+    const itemRowsHtml = items.length
+      ? items.map(i => {
+          const opts = i.options
+            ? i.options.split('\n').filter(l => l.trim()).map(l => `<span class="po-option">${esc(l.trim())}</span>`).join('')
+            : '';
+          return `<tr>
+            <td>${esc(i.code)}</td>
+            <td>${esc(i.desc)}${opts}</td>
+            <td>${esc(i.qty)}</td>
+          </tr>`;
+        }).join('')
+      : `<tr><td colspan="3" style="color:#aaa;text-align:center">No items</td></tr>`;
+
+    document.getElementById('poOutput').innerHTML = `
+      ${getLogoHtml(currentTab)}
+
+      <div class="po-top-row">
+        <div class="po-to">${vendor ? `<span class="po-label">To:</span> ${esc(vendor)}` : ''}</div>
+        <div class="po-meta-right">
+          <div><span class="po-label">Purchase Order #:</span> ${esc(poNum)}</div>
+          <div><span class="po-label">Date:</span> ${esc(date)}</div>
+        </div>
+      </div>
+
+      <hr class="po-divider">
+
+      <div class="po-shipto">
+        <span class="po-label">Ship To:</span>
+        <div class="po-shipto-block">${addrLines.map(l => esc(l)).join('<br>')}</div>
+      </div>
+
+      <table class="po-table">
+        <thead>
+          <tr><th>Code</th><th>Item</th><th>Qty</th></tr>
+        </thead>
+        <tbody>${itemRowsHtml}</tbody>
+      </table>
+
+      <div class="po-notes"><span class="po-label">Notes:</span> ${esc(notes)}</div>
+    `;
+
+    // ── Plain text version for clipboard ──
+    const siteUrl = localStorage.getItem(`logoUrl_${currentTab}`) || 'www.thecrowdcontroller.com';
+    const C = 8, I = 56;
+    const txtHeader  = pad('Code', C) + pad('Item', I) + 'Qty';
+    const txtDivider = '─'.repeat(C + I + 4);
+    const txtItems = items.length
+      ? items.map(i => {
+          const main = pad(i.code, C) + pad(i.desc, I) + i.qty;
+          const opts = i.options
+            ? i.options.split('\n').filter(l => l.trim()).map(l => ' '.repeat(C) + l.trim()).join('\n')
+            : '';
+          return opts ? main + '\n' + opts : main;
+        }).join('\n')
+      : '(no items)';
+
+    window._poPlainText = [
+      siteUrl.replace(/^https?:\/\//, ''),
+      '',
+      vendor ? `To: ${vendor}` : '',
+      '',
+      ''.padStart(38) + `Purchase Order #: ${poNum}`,
+      ''.padStart(38) + `Date: ${date}`,
+      '',
+      '',
+      'Ship To:',
+      ...addrLines,
+      '',
+      '',
+      txtHeader,
+      txtDivider,
+      txtItems,
+      '',
+      '',
+      `Notes: ${notes}`,
+    ].filter((l, i, arr) => !(l === '' && arr[i-1] === '' && arr[i-2] === '')).join('\n');
+
+    document.getElementById('outputCard').style.display = 'block';
+  }
+
+  function v(id) { return (document.getElementById(id)?.value || '').trim(); }
+
+  function pad(str, len) {
+    str = String(str);
+    return str.length >= len ? str.substring(0, len - 1) + ' ' : str + ' '.repeat(len - str.length);
+  }
+
+  // ── Copy ──────────────────────────────────────────────────
+  function copyPO() {
+    const text = window._poPlainText || document.getElementById('poOutput').innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('btnCopy');
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    });
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('errorMsg');
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+  function hideError() { document.getElementById('errorMsg').style.display = 'none'; }
+</script>
+</body>
+</html>

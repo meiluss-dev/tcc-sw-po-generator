@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -979,7 +980,8 @@
     `;
 
     // ── Plain text version for clipboard ──
-    const siteUrl = localStorage.getItem(`logoUrl_${currentTab}`) || 'www.thecrowdcontroller.com';
+    const defaultUrl = currentTab === 'shopify' ? 'www.thecrowdcontroller.com' : 'www.stanchionworld.com';
+    const siteUrl = localStorage.getItem(`logoUrl_${currentTab}`) || defaultUrl;
     const C = 8, I = 56;
     const txtHeader  = pad('Code', C) + pad('Item', I) + 'Qty';
     const txtDivider = '─'.repeat(C + I + 4);

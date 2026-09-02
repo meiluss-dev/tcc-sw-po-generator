@@ -195,86 +195,50 @@
       display: block;
     }
 
-    /* PO Output */
+    /* PO Output — the document itself carries inline styles so it survives
+       a paste into Gmail or Outlook. This wrapper is only the sheet it sits on. */
     .po-output-wrap { position: relative; }
     .po-output {
-      font-family: "Georgia", "Times New Roman", serif;
-      font-size: 0.92rem;
       background: #fff;
       border: 1px solid #c8cdd6;
       border-radius: 8px;
-      padding: 36px 40px;
+      padding: 30px 34px;
       min-height: 200px;
-      line-height: 1.7;
       box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      overflow-x: auto;
     }
 
-    /* PO document internals */
-    .po-logo {
-      font-family: "Georgia", serif;
-      font-size: 1.4rem;
-      font-weight: bold;
-      color: #1a3a7c;
-      text-align: center;
-      letter-spacing: 0.5px;
-      margin-bottom: 24px;
-      padding-bottom: 14px;
-      border-bottom: 2px solid #1a3a7c;
+    .doc-actions { display: flex; gap: 8px; margin-bottom: 16px; }
+    .doc-actions button { flex: 1; }
+    .btn-print {
+      padding: 13px;
+      background: #fff;
+      color: #1a1a2e;
+      font-size: 0.95rem;
+      font-weight: 700;
+      border: 2px solid #d0d5dd;
+      border-radius: 10px;
+      cursor: pointer;
     }
-    .po-top-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
-      gap: 12px;
+    .btn-print:hover { border-color: #1a1a2e; }
+    .btn-remove-logo {
+      background: none;
+      border: none;
+      color: #c00;
+      font-size: 0.75rem;
+      cursor: pointer;
+      padding: 0;
+      margin: -6px 0 10px;
+      display: none;
     }
-    .po-to { font-size: 1rem; }
-    .po-meta-right { text-align: right; font-size: 0.92rem; }
-    .po-label { font-weight: bold; font-family: "Georgia", serif; }
-    .po-shipto {
-      margin-bottom: 24px;
-      line-height: 1.6;
+    .settings-note {
+      font-size: 0.8rem;
+      color: #888;
+      margin-bottom: 14px;
     }
-    .po-shipto-block {
-      margin-top: 4px;
-      margin-left: 0;
-      color: #222;
-    }
-    .po-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 24px;
-      font-size: 0.9rem;
-    }
-    .po-table thead tr {
-      background: #1a3a7c;
-      color: #fff;
-    }
-    .po-table thead th {
-      padding: 9px 12px;
-      text-align: left;
-      font-weight: bold;
-      font-family: "Georgia", serif;
-      letter-spacing: 0.3px;
-    }
-    .po-table thead th:last-child { text-align: center; }
-    .po-table tbody tr:nth-child(odd) { background: #f5f7fb; }
-    .po-table tbody td {
-      padding: 9px 12px;
-      vertical-align: top;
-      border-bottom: 1px solid #e0e4ec;
-    }
-    .po-table tbody td:last-child { text-align: center; font-weight: bold; }
-    .po-option {
-      display: block;
-      font-size: 0.83rem;
-      color: #555;
-      font-style: italic;
-    }
-    .po-notes { margin-top: 8px; font-size: 0.9rem; }
-    .po-divider { border: none; border-top: 1px solid #d0d5dd; margin: 20px 0; }
-    .po-logo-img { max-height: 64px; max-width: 280px; display: block; margin: 0 auto 4px; }
+    .settings-col { display: flex; flex-direction: column; gap: 12px; }
+    .accent-row { display: flex; align-items: center; gap: 10px; }
+    .accent-row input[type="color"] { width: 44px; height: 34px; padding: 2px; border: 1px solid #d0d5dd; border-radius: 6px; background: #fff; cursor: pointer; }
 
     /* Settings panel */
     .settings-toggle {
@@ -403,35 +367,58 @@
 
   <!-- Settings -->
   <div class="card" style="margin-bottom:16px;">
-    <button class="settings-toggle" onclick="toggleSettings(this)">⚙ Logo Settings</button>
+    <button class="settings-toggle" onclick="toggleSettings(this)">⚙ Company Settings</button>
     <div class="settings-body" id="settingsBody">
+      <p class="settings-note">These details print on the letterhead of the
+        <strong id="settingsScope">Shopify</strong> purchase order. Each tab keeps its own set.</p>
       <div class="settings-grid">
-        <div>
-          <div class="field-group"><label>Shopify PO — Logo</label></div>
-          <div class="logo-upload-zone" onclick="">
-            <input type="file" accept="image/*" onchange="uploadLogo(this,'shopify')" />
+        <div class="settings-col">
+          <div class="field-group"><label>Logo</label></div>
+          <div class="logo-upload-zone">
+            <input type="file" accept="image/*" onchange="uploadLogo(this)" />
             Click to upload logo
           </div>
-          <img id="shopifyLogoPreview" class="logo-preview-img" />
-          <div class="field-group" style="margin-top:6px;">
-            <label>Website URL</label>
-            <input class="settings-url-input" id="shopifyUrl" type="url"
-              placeholder="https://www.thecrowdcontroller.com"
-              onchange="saveLogoUrl('shopify', this.value)" />
+          <img id="logoPreview" class="logo-preview-img" />
+          <button class="btn-remove-logo" id="btnRemoveLogo" onclick="removeLogo()">Remove logo</button>
+          <div class="field-group">
+            <label>Business name</label>
+            <input id="setName" type="text" placeholder="The Crowd Controller"
+              oninput="saveSetting('name', this.value)" />
+          </div>
+          <div class="field-group">
+            <label>Address</label>
+            <textarea id="setAddress" rows="3" placeholder="1234 Main St&#10;Suite 100&#10;City ST 12345"
+              oninput="saveSetting('address', this.value)"></textarea>
           </div>
         </div>
-        <div>
-          <div class="field-group"><label>Volusion PO — Logo</label></div>
-          <div class="logo-upload-zone">
-            <input type="file" accept="image/*" onchange="uploadLogo(this,'volusion')" />
-            Click to upload logo
+        <div class="settings-col">
+          <div class="field-group">
+            <label>Phone</label>
+            <input id="setPhone" type="text" placeholder="+1 555-000-0000"
+              oninput="saveSetting('phone', this.value)" />
           </div>
-          <img id="volusionLogoPreview" class="logo-preview-img" />
-          <div class="field-group" style="margin-top:6px;">
+          <div class="field-group">
+            <label>Email</label>
+            <input id="setEmail" type="email" placeholder="orders@example.com"
+              oninput="saveSetting('email', this.value)" />
+          </div>
+          <div class="field-group">
             <label>Website URL</label>
-            <input class="settings-url-input" id="volusionUrl" type="url"
-              placeholder="https://www.example.com"
-              onchange="saveLogoUrl('volusion', this.value)" />
+            <input id="setUrl" type="url" placeholder="https://www.thecrowdcontroller.com"
+              oninput="saveSetting('url', this.value)" />
+          </div>
+          <div class="field-group">
+            <label>Footer line</label>
+            <input id="setFooter" type="text" placeholder="Please confirm receipt and lead time."
+              oninput="saveSetting('footer', this.value)" />
+          </div>
+          <div class="field-group">
+            <label>Accent colour</label>
+            <div class="accent-row">
+              <input id="setAccent" type="color" value="#111111"
+                oninput="saveSetting('accent', this.value)" />
+              <span class="hint" style="margin:0">Titles and rules only — never a filled background, so it prints properly.</span>
+            </div>
           </div>
         </div>
       </div>
@@ -482,6 +469,14 @@
         <input type="text" id="fDate" placeholder="05/01/2026" />
       </div>
       <div class="field-group">
+        <label>Required By (optional)</label>
+        <input type="text" id="fRequiredBy" placeholder="05/15/2026" />
+      </div>
+      <div class="field-group">
+        <label>Our Customer Ref (optional)</label>
+        <input type="text" id="fCustomerRef" placeholder="Order #1234" />
+      </div>
+      <div class="field-group">
         <label>Ship To — Name</label>
         <input type="text" id="fName" placeholder="George Barber" />
       </div>
@@ -507,6 +502,11 @@
       </div>
     </div>
 
+    <div class="field-group" style="margin-bottom:16px;">
+      <label>Vendor Contact (optional)</label>
+      <textarea id="fVendorContact" rows="2" placeholder="Contact name&#10;orders@vendor.com&#10;+1 555-000-0000"></textarea>
+    </div>
+
     <h2 style="margin-bottom:10px;">Line Items</h2>
     <table class="items-table">
       <thead>
@@ -522,15 +522,18 @@
     <button class="btn-add-row" onclick="addItemRow()">+ Add Row</button>
 
     <div class="field-group" style="margin-top:16px;">
-      <label>Notes</label>
-      <textarea id="fNotes" rows="2" placeholder="Leave blank or add special instructions"></textarea>
+      <label>Special Instructions</label>
+      <textarea id="fNotes" rows="2" placeholder="Leave blank, or add packing / delivery instructions for the vendor"></textarea>
     </div>
   </div>
 
   <!-- PO Output Card -->
   <div class="card" id="outputCard" style="display:none;">
     <h2>Generated Vendor PO Email</h2>
-    <button class="btn-generate" onclick="generatePO()">Regenerate PO</button>
+    <div class="doc-actions">
+      <button class="btn-generate" style="margin-bottom:0" onclick="generatePO()">Regenerate PO</button>
+      <button class="btn-print" onclick="printPO()">Print / Save PDF</button>
+    </div>
     <div class="po-output-wrap">
       <button class="btn-copy" id="btnCopy" onclick="copyPO()">Copy</button>
       <div class="po-output" id="poOutput"></div>
@@ -542,53 +545,85 @@
 <script>
   let currentTab = 'shopify';
 
-  // ── Logo settings ─────────────────────────────────────────
-  (function initLogos() {
-    ['shopify','volusion'].forEach(mod => {
-      const logo = localStorage.getItem(`logo_${mod}`);
-      const url  = localStorage.getItem(`logoUrl_${mod}`);
-      if (logo) showLogoPreview(mod, logo);
-      if (url)  { const el = document.getElementById(`${mod}Url`); if (el) el.value = url; }
-    });
-  })();
+  // ── Company settings ──────────────────────────────────────
+  // The letterhead each tab prints from. Keys stay compatible with the
+  // logo-only version that came before: logo_<mod> and logoUrl_<mod> are what
+  // shops already have in localStorage, so nobody loses their logo.
+  const DEFAULT_ACCENT = '#111111';
+  const SITE_DEFAULTS  = { shopify: 'www.thecrowdcontroller.com', volusion: 'www.stanchionworld.com' };
+  const NAME_DEFAULTS  = { shopify: 'The Crowd Controller', volusion: 'StanchionWorld' };
+
+  function settingKey(mod, k) { return k === 'url' ? `logoUrl_${mod}` : `po_${mod}_${k}`; }
+
+  function getSettings(mod) {
+    const g = k => localStorage.getItem(settingKey(mod, k)) || '';
+    return {
+      logo:    localStorage.getItem(`logo_${mod}`) || '',
+      url:     g('url'),
+      name:    g('name'),
+      address: g('address'),
+      phone:   g('phone'),
+      email:   g('email'),
+      footer:  g('footer'),
+      accent:  g('accent') || DEFAULT_ACCENT,
+    };
+  }
+
+  function saveSetting(key, value) {
+    localStorage.setItem(settingKey(currentTab, key), value);
+    refreshOutput();
+  }
+
+  function loadSettingsForm() {
+    const s = getSettings(currentTab);
+    document.getElementById('settingsScope').textContent = currentTab === 'shopify' ? 'Shopify' : 'Volusion';
+    document.getElementById('setName').value    = s.name;
+    document.getElementById('setAddress').value = s.address;
+    document.getElementById('setPhone').value   = s.phone;
+    document.getElementById('setEmail').value   = s.email;
+    document.getElementById('setUrl').value     = s.url;
+    document.getElementById('setFooter').value  = s.footer;
+    document.getElementById('setAccent').value  = /^#[0-9a-f]{6}$/i.test(s.accent) ? s.accent : DEFAULT_ACCENT;
+    document.getElementById('setName').placeholder = NAME_DEFAULTS[currentTab] || '';
+    document.getElementById('setUrl').placeholder  = 'https://' + (SITE_DEFAULTS[currentTab] || '');
+    showLogoPreview(s.logo);
+  }
 
   function toggleSettings(btn) {
     const body = document.getElementById('settingsBody');
     body.classList.toggle('open');
-    btn.textContent = body.classList.contains('open') ? '⚙ Logo Settings ▲' : '⚙ Logo Settings';
+    btn.textContent = body.classList.contains('open') ? '⚙ Company Settings ▲' : '⚙ Company Settings';
   }
 
-  function uploadLogo(input, mod) {
+  function uploadLogo(input) {
     const file = input.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = e => {
-      localStorage.setItem(`logo_${mod}`, e.target.result);
-      showLogoPreview(mod, e.target.result);
+      localStorage.setItem(`logo_${currentTab}`, e.target.result);
+      showLogoPreview(e.target.result);
+      refreshOutput();
     };
     reader.readAsDataURL(file);
   }
 
-  function showLogoPreview(mod, dataUrl) {
-    const img = document.getElementById(`${mod}LogoPreview`);
-    if (!img) return;
-    img.src = dataUrl;
-    img.style.display = 'block';
+  function removeLogo() {
+    localStorage.removeItem(`logo_${currentTab}`);
+    showLogoPreview('');
+    refreshOutput();
   }
 
-  function saveLogoUrl(mod, url) {
-    localStorage.setItem(`logoUrl_${mod}`, url);
+  function showLogoPreview(dataUrl) {
+    const img = document.getElementById('logoPreview');
+    const btn = document.getElementById('btnRemoveLogo');
+    img.src = dataUrl || '';
+    img.style.display = dataUrl ? 'block' : 'none';
+    btn.style.display = dataUrl ? 'block' : 'none';
   }
 
-  function getLogoHtml(mod) {
-    const logo = localStorage.getItem(`logo_${mod}`);
-    const url  = localStorage.getItem(`logoUrl_${mod}`) || '#';
-    if (logo) {
-      return `<a href="${url}" target="_blank" style="display:block;text-align:center;">
-        <img src="${logo}" class="po-logo-img" alt="Company Logo" />
-      </a>`;
-    }
-    return `<div class="po-logo">${url !== '#' ? url : 'www.thecrowdcontroller.com'}</div>`;
+  /** Settings edits show up straight away, but only once there is a PO to redraw. */
+  function refreshOutput() {
+    if (document.getElementById('outputCard').style.display !== 'none') generatePO();
   }
 
   // ── Tabs ─────────────────────────────────────────────────
@@ -613,6 +648,7 @@
       4. Click <strong>Parse Order</strong>`;
 
     document.getElementById('instructions').innerHTML = tab === 'shopify' ? instrShopify : instrVolusion;
+    loadSettingsForm();
     document.getElementById('pasteArea').value = '';
     document.getElementById('fieldsCard').style.display = 'none';
     document.getElementById('outputCard').style.display = 'none';
@@ -860,6 +896,9 @@
     document.getElementById('fVendor').value = d.vendor || '';
     document.getElementById('fPoNum').value = d.order_number || '';
     document.getElementById('fDate').value = d.date || '';
+    document.getElementById('fRequiredBy').value = '';
+    document.getElementById('fCustomerRef').value = '';
+    document.getElementById('fVendorContact').value = '';
     document.getElementById('fName').value = d.ship_to?.name || '';
     document.getElementById('fCompany').value = d.ship_to?.company || '';
     document.getElementById('fStreet').value = d.ship_to?.street || '';
@@ -916,107 +955,205 @@
   }
 
   // ── Generate PO ───────────────────────────────────────────
-  function generatePO() {
-    const vendor  = v('fVendor');
-    const poNum   = v('fPoNum');
-    const date    = v('fDate');
-    const name    = v('fName');
-    const company = v('fCompany');
-    const street  = v('fStreet');
-    const csz     = v('fCityStateZip');
-    const country = v('fCountry');
-    const phone   = v('fPhone');
-    const notes   = v('fNotes');
+  // Everything below is built with inline styles on purpose. A mail client
+  // never sees this page's stylesheet, so a document that leans on <style>
+  // arrives in Gmail as a stack of bare text — which is exactly what the
+  // borders, columns and letterhead here are meant to survive.
+  const DOC_FONT = "font:12px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#000;background:#fff;";
+  const H4 = 'margin:0 0 5px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#555;border-bottom:1px solid #ccc;padding-bottom:3px;';
+  const TH = 'background:#f0f0f0;border:1px solid #999;padding:6px 7px;font-size:10px;letter-spacing:.6px;text-transform:uppercase;';
+  const TD = 'border:1px solid #ccc;padding:6px 7px;vertical-align:top;';
 
-    const mainRows = [...document.querySelectorAll('#itemsBody tr.item-main-row')];
-    const items = mainRows.map(tr => {
+  function docBlock(title, body, danger) {
+    const style = danger
+      ? 'margin:0;white-space:pre-wrap;color:#b91c1c;font-weight:600;'
+      : 'margin:0;white-space:pre-wrap;';
+    return `<div style="${H4}">${esc(title)}</div><div style="${style}">${esc(body)}</div>`;
+  }
+
+  function collectItems() {
+    return [...document.querySelectorAll('#itemsBody tr.item-main-row')].map(tr => {
       const inputs = tr.querySelectorAll('input');
       const optRow = tr.nextElementSibling;
-      const options = optRow?.querySelector('textarea')?.value.trim() || '';
-      return { code: inputs[0].value.trim(), desc: inputs[1].value.trim(), qty: inputs[2].value.trim(), options };
+      return {
+        code: inputs[0].value.trim(),
+        desc: inputs[1].value.trim(),
+        qty:  inputs[2].value.trim(),
+        options: optRow?.querySelector('textarea')?.value.trim() || '',
+      };
     }).filter(i => i.code || i.desc);
+  }
 
-    // ── HTML display version ──
-    const addrLines = [name, company, street, csz, country, phone].filter(Boolean);
-    const itemRowsHtml = items.length
-      ? items.map(i => {
-          const opts = i.options
-            ? i.options.split('\n').filter(l => l.trim()).map(l => `<span class="po-option">${esc(l.trim())}</span>`).join('')
+  function generatePO() {
+    const s      = getSettings(currentTab);
+    const accent = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s.accent) ? s.accent : DEFAULT_ACCENT;
+    const site   = (s.url || SITE_DEFAULTS[currentTab] || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
+
+    const vendor        = v('fVendor');
+    const vendorContact = v('fVendorContact');
+    const poNum         = v('fPoNum');
+    const date          = v('fDate');
+    const requiredBy    = v('fRequiredBy');
+    const customerRef   = v('fCustomerRef');
+    const notes         = v('fNotes');
+
+    const shipToLines = [v('fName'), v('fCompany'), v('fStreet'), v('fCityStateZip'), v('fCountry'), v('fPhone')].filter(Boolean);
+    const shipTo      = shipToLines.join('\n');
+    const vendorBlock = [vendor, vendorContact].filter(Boolean).join('\n');
+
+    const buyerName  = s.name || NAME_DEFAULTS[currentTab] || site;
+    const buyerLines = [buyerName, ...s.address.split('\n').map(l => l.trim()).filter(Boolean)];
+    const billTo     = buyerLines.join('\n');
+    const items      = collectItems();
+
+    // A wordmark logo already carries the name, so the name only prints when
+    // there is no logo — otherwise it reads twice at the top of the page.
+    const fromHtml = [
+      s.logo ? `<img src="${s.logo}" alt="${esc(buyerName)}" style="display:block;max-width:220px;max-height:60px;margin-bottom:6px;" />` : '',
+      s.logo ? '' : `<div style="font-size:17px;font-weight:700;letter-spacing:.3px;margin-bottom:3px;">${esc(buyerName)}</div>`,
+      ...s.address.split('\n').map(l => l.trim()).filter(Boolean).map(l => `<div>${esc(l)}</div>`),
+      s.phone ? `<div>Tel ${esc(s.phone)}</div>` : '',
+      s.email ? `<div>${esc(s.email)}</div>` : '',
+    ].join('');
+
+    const metaRow = (label, val) => val
+      ? `<tr><td style="padding:1px 0;font-size:12px;color:#555;text-align:left;">${esc(label)}</td>` +
+        `<td style="padding:1px 0 1px 12px;font-size:12px;"><strong>${esc(val)}</strong></td></tr>`
+      : '';
+    const metaRows = metaRow('PO number', poNum) + metaRow('Date', date)
+                   + metaRow('Required by', requiredBy) + metaRow('Our customer ref', customerRef);
+
+    const rowsHtml = items.length
+      ? items.map((it, i) => {
+          const note = it.options
+            ? `<div style="color:#555;font-size:11px;margin-top:2px;white-space:pre-line;">${esc(it.options)}</div>`
             : '';
           return `<tr>
-            <td>${esc(i.code)}</td>
-            <td>${esc(i.desc)}${opts}</td>
-            <td>${esc(i.qty)}</td>
+            <td style="${TD}text-align:center;color:#666;width:30px;">${i + 1}</td>
+            <td style="${TD}font-family:ui-monospace,Menlo,monospace;font-weight:600;white-space:nowrap;">${esc(it.code) || '—'}</td>
+            <td style="${TD}">${esc(it.desc)}${note}</td>
+            <td style="${TD}text-align:center;width:58px;">${esc(it.qty)}</td>
           </tr>`;
         }).join('')
-      : `<tr><td colspan="3" style="color:#aaa;text-align:center">No items</td></tr>`;
+      : `<tr><td colspan="4" style="${TD}text-align:center;color:#999;">No items</td></tr>`;
 
-    document.getElementById('poOutput').innerHTML = `
-      ${getLogoHtml(currentTab)}
+    const secondRow = billTo.trim()
+      ? `<table style="width:100%;border-collapse:collapse;margin:0 0 16px;">
+           <tr>
+             <td style="width:50%;vertical-align:top;padding-right:13px;">${docBlock('Bill to', billTo)}</td>
+             <td style="width:50%;vertical-align:top;padding-left:13px;"></td>
+           </tr>
+         </table>`
+      : '';
 
-      <div class="po-top-row">
-        <div class="po-to">${vendor ? `<span class="po-label">To:</span> ${esc(vendor)}` : ''}</div>
-        <div class="po-meta-right">
-          <div><span class="po-label">Purchase Order #:</span> ${esc(poNum)}</div>
-          <div><span class="po-label">Date:</span> ${esc(date)}</div>
-        </div>
-      </div>
+    const instructionsHtml = notes
+      ? `<div style="margin-top:16px;">
+           <div style="${H4}border-bottom:none;">Special instructions</div>
+           <div style="border:1px solid #ccc;padding:8px 10px;white-space:pre-wrap;">${esc(notes)}</div>
+         </div>`
+      : '';
 
-      <hr class="po-divider">
+    const footHtml = (s.footer || site)
+      ? `<table style="width:100%;border-collapse:collapse;margin-top:20px;border-top:1px solid #ccc;">
+           <tr>
+             <td style="padding-top:10px;font-size:10.5px;color:#444;">${esc(s.footer)}</td>
+             <td style="padding-top:10px;font-size:10.5px;color:#444;text-align:right;white-space:nowrap;">${esc(site)}</td>
+           </tr>
+         </table>`
+      : '';
 
-      <div class="po-shipto">
-        <span class="po-label">Ship To:</span>
-        <div class="po-shipto-block">${addrLines.map(l => esc(l)).join('<br>')}</div>
-      </div>
+    const html =
+`<div style="${DOC_FONT}">
+  <table style="width:100%;border-collapse:collapse;border-bottom:2px solid ${accent};">
+    <tr>
+      <td style="vertical-align:top;padding:0 24px 12px 0;">${fromHtml}</td>
+      <td style="vertical-align:top;padding:0 0 12px 0;text-align:right;white-space:nowrap;">
+        <div style="font-size:21px;font-weight:700;letter-spacing:2px;color:${accent};margin-bottom:6px;">PURCHASE ORDER</div>
+        <table style="border-collapse:collapse;margin-left:auto;">${metaRows}</table>
+      </td>
+    </tr>
+  </table>
 
-      <table class="po-table">
-        <thead>
-          <tr><th>Code</th><th>Item</th><th>Qty</th></tr>
-        </thead>
-        <tbody>${itemRowsHtml}</tbody>
-      </table>
+  <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+    <tr>
+      <td style="width:50%;vertical-align:top;padding-right:13px;">${docBlock('Vendor', vendorBlock || '—')}</td>
+      <td style="width:50%;vertical-align:top;padding-left:13px;">${
+        shipTo
+          ? docBlock('Ship to (drop-ship)', shipTo)
+          : docBlock('Ship to (drop-ship)', 'NO DELIVERY ADDRESS — do not send this purchase order', true)
+      }</td>
+    </tr>
+  </table>
 
-      <div class="po-notes"><span class="po-label">Notes:</span> ${esc(notes)}</div>
-    `;
+  ${secondRow}
 
-    // ── Plain text version for clipboard ──
-    const defaultUrl = currentTab === 'shopify' ? 'www.thecrowdcontroller.com' : 'www.stanchionworld.com';
-    const siteUrl = localStorage.getItem(`logoUrl_${currentTab}`) || defaultUrl;
-    const C = 8, I = 56;
-    const txtHeader  = pad('Code', C) + pad('Item', I) + 'Qty';
-    const txtDivider = '─'.repeat(C + I + 4);
-    const txtItems = items.length
-      ? items.map(i => {
-          const main = pad(i.code, C) + pad(i.desc, I) + i.qty;
-          const opts = i.options
-            ? i.options.split('\n').filter(l => l.trim()).map(l => ' '.repeat(C) + l.trim()).join('\n')
+  <table style="width:100%;border-collapse:collapse;margin-top:8px;">
+    <thead>
+      <tr>
+        <th style="${TH}text-align:center;width:30px;">#</th>
+        <th style="${TH}text-align:left;width:24%;">Part number</th>
+        <th style="${TH}text-align:left;">Description</th>
+        <th style="${TH}text-align:center;width:58px;">Qty</th>
+      </tr>
+    </thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+
+  ${instructionsHtml}
+  ${footHtml}
+</div>`;
+
+    document.getElementById('poOutput').innerHTML = html;
+    window._poHtml   = html;
+    window._poNumber = poNum || 'purchase-order';
+
+    // ── Plain text fallback, for clients that refuse HTML ──
+    const C = 4, P = 16, I = 52;
+    const txtRows = items.length
+      ? items.map((it, i) => {
+          const main = pad(String(i + 1), C) + pad(it.code, P) + pad(it.desc, I) + it.qty;
+          const opts = it.options
+            ? it.options.split('\n').filter(l => l.trim()).map(l => ' '.repeat(C + P) + l.trim()).join('\n')
             : '';
           return opts ? main + '\n' + opts : main;
         }).join('\n')
       : '(no items)';
 
+    // Blank lines separate the sections, so the fallback still reads as a
+    // document rather than as one unbroken column.
     window._poPlainText = [
-      siteUrl.replace(/^https?:\/\//, ''),
-      '',
-      vendor ? `To: ${vendor}` : '',
-      '',
-      ''.padStart(38) + `Purchase Order #: ${poNum}`,
-      ''.padStart(38) + `Date: ${date}`,
-      '',
-      '',
-      'Ship To:',
-      ...addrLines,
-      '',
-      '',
-      txtHeader,
-      txtDivider,
-      txtItems,
-      '',
-      '',
-      `Notes: ${notes}`,
-    ].filter((l, i, arr) => !(l === '' && arr[i-1] === '' && arr[i-2] === '')).join('\n');
+      [buyerLines.join('\n'), s.phone ? `Tel ${s.phone}` : '', s.email].filter(Boolean).join('\n'),
+      ['PURCHASE ORDER',
+        poNum       ? `PO number:        ${poNum}` : '',
+        date        ? `Date:             ${date}` : '',
+        requiredBy  ? `Required by:      ${requiredBy}` : '',
+        customerRef ? `Our customer ref: ${customerRef}` : '',
+      ].filter(Boolean).join('\n'),
+      ['VENDOR', vendorBlock || '—'].join('\n'),
+      ['SHIP TO (DROP-SHIP)', shipTo || 'NO DELIVERY ADDRESS — do not send this purchase order'].join('\n'),
+      [pad('#', C) + pad('PART NUMBER', P) + pad('DESCRIPTION', I) + 'QTY',
+        '─'.repeat(C + P + I + 4),
+        txtRows,
+      ].join('\n'),
+      notes ? ['SPECIAL INSTRUCTIONS', notes].join('\n') : '',
+      [s.footer, site].filter(Boolean).join('\n'),
+    ].filter(Boolean).join('\n\n');
 
     document.getElementById('outputCard').style.display = 'block';
+  }
+
+  /** Opens the document on its own so the browser's print dialog can save it as a PDF. */
+  function printPO() {
+    if (!window._poHtml) return;
+    const w = window.open('', '_blank', 'width=860,height=1000');
+    if (!w) { showError('Allow pop-ups for this page to print the purchase order.'); return; }
+    w.document.write(
+      `<!DOCTYPE html><html><head><meta charset="utf-8"><title>PO ${esc(window._poNumber)}</title>` +
+      `<style>@page{margin:14mm;size:letter}body{margin:0}</style></head><body>${window._poHtml}</body></html>`
+    );
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 300);
   }
 
   function v(id) { return (document.getElementById(id)?.value || '').trim(); }
@@ -1027,14 +1164,46 @@
   }
 
   // ── Copy ──────────────────────────────────────────────────
-  function copyPO() {
+  // text/html first, so the PO lands in Gmail as the document rather than as a
+  // wall of text. Plain text rides along in the same clipboard write for the
+  // clients that will not take HTML.
+  async function copyPO() {
+    const html = window._poHtml || document.getElementById('poOutput').innerHTML;
     const text = window._poPlainText || document.getElementById('poOutput').innerText;
-    navigator.clipboard.writeText(text).then(() => {
-      const btn = document.getElementById('btnCopy');
-      btn.textContent = 'Copied!';
-      btn.classList.add('copied');
-      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
-    });
+    let copied = false;
+
+    try {
+      if (window.ClipboardItem && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/html':  new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+        })]);
+        copied = true;
+      }
+    } catch (e) { copied = false; }
+
+    // Selecting the rendered document and letting the browser copy it is the
+    // fallback that still carries formatting where ClipboardItem is missing.
+    if (!copied) copied = copyBySelection(document.getElementById('poOutput'));
+    if (!copied) { try { await navigator.clipboard.writeText(text); copied = true; } catch (e) {} }
+
+    const btn = document.getElementById('btnCopy');
+    btn.textContent = copied ? 'Copied!' : 'Copy failed';
+    btn.classList.toggle('copied', copied);
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  }
+
+  function copyBySelection(el) {
+    const selection = window.getSelection();
+    if (!el || !selection) return false;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    selection.removeAllRanges();
+    return ok;
   }
 
   function showError(msg) {
@@ -1043,6 +1212,8 @@
     el.style.display = 'block';
   }
   function hideError() { document.getElementById('errorMsg').style.display = 'none'; }
+
+  loadSettingsForm();
 </script>
 </body>
 </html>

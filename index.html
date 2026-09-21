@@ -208,6 +208,26 @@
       overflow-x: auto;
     }
 
+    .pricing-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #444;
+      margin: 14px 0 4px;
+      cursor: pointer;
+    }
+    .pricing-toggle input { width: 16px; height: 16px; cursor: pointer; }
+    .totals-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 10px;
+      max-width: 420px;
+    }
+    .items-table th.price-col, .items-table td.price-col { display: none; }
+    .items-table.with-price th.price-col, .items-table.with-price td.price-col { display: table-cell; }
     .doc-actions { display: flex; gap: 8px; margin-bottom: 16px; }
     .doc-actions button { flex: 1; }
     .btn-print {
@@ -429,6 +449,7 @@
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('shopify', this)">Shopify</button>
     <button class="tab-btn" onclick="switchTab('volusion', this)">Volusion</button>
+    <button class="tab-btn" onclick="switchTab('mrchain', this)">Mr. Chain</button>
   </div>
 
   <!-- Paste Card -->
@@ -477,6 +498,10 @@
         <input type="text" id="fCustomerRef" placeholder="Order #1234" />
       </div>
       <div class="field-group">
+        <label>Ship Via</label>
+        <input type="text" id="fShipVia" placeholder="UPS Ground" />
+      </div>
+      <div class="field-group">
         <label>Ship To — Name</label>
         <input type="text" id="fName" placeholder="George Barber" />
       </div>
@@ -514,12 +539,36 @@
           <th style="width:90px">Code</th>
           <th>Item Description</th>
           <th style="width:60px">Qty</th>
+          <th style="width:90px" class="price-col">Unit Price</th>
           <th style="width:40px"></th>
         </tr>
       </thead>
       <tbody id="itemsBody"></tbody>
     </table>
     <button class="btn-add-row" onclick="addItemRow()">+ Add Row</button>
+
+    <label class="pricing-toggle">
+      <input type="checkbox" id="fShowPricing" onchange="togglePricing()" />
+      Show our customer pricing on the PO
+    </label>
+
+    <div class="totals-grid" id="totalsGrid" style="display:none;">
+      <div class="field-group">
+        <label>Subtotal</label>
+        <input type="text" id="fSubtotal" placeholder="60.00" />
+      </div>
+      <div class="field-group">
+        <label>Tax</label>
+        <input type="text" id="fTax" placeholder="0.00" />
+      </div>
+      <div class="field-group">
+        <label>Total</label>
+        <input type="text" id="fTotal" placeholder="60.00" />
+      </div>
+    </div>
+    <p class="hint" id="pricingHint" style="display:none;margin-top:6px;">
+      Shipping is left off on purpose — these totals are goods only.
+    </p>
 
     <div class="field-group" style="margin-top:16px;">
       <label>Special Instructions</label>
@@ -552,6 +601,14 @@
   const DEFAULT_ACCENT = '#111111';
   const SITE_DEFAULTS  = { shopify: 'www.thecrowdcontroller.com', volusion: 'www.stanchionworld.com' };
   const NAME_DEFAULTS  = { shopify: 'The Crowd Controller', volusion: 'StanchionWorld' };
+  // Printed as the bill-to until someone types something else into settings, so
+  // a Mr. Chain PO is correct straight out of the box on any machine.
+  const ADDRESS_DEFAULTS = { volusion: '7901 4th Street North\nSuite 103\nSt. Petersburg, FL 33702' };
+
+  // A Mr. Chain order is a StanchionWorld order, so the two tabs share one
+  // letterhead — fill the address in once and both print it.
+  const SETTINGS_MODULE = { shopify: 'shopify', volusion: 'volusion', mrchain: 'volusion' };
+  function settingsModule() { return SETTINGS_MODULE[currentTab] || currentTab; }
 
   function settingKey(mod, k) { return k === 'url' ? `logoUrl_${mod}` : `po_${mod}_${k}`; }
 
@@ -570,13 +627,15 @@
   }
 
   function saveSetting(key, value) {
-    localStorage.setItem(settingKey(currentTab, key), value);
+    localStorage.setItem(settingKey(settingsModule(), key), value);
     refreshOutput();
   }
 
   function loadSettingsForm() {
-    const s = getSettings(currentTab);
-    document.getElementById('settingsScope').textContent = currentTab === 'shopify' ? 'Shopify' : 'Volusion';
+    const mod = settingsModule();
+    const s = getSettings(mod);
+    document.getElementById('settingsScope').textContent =
+      mod === 'shopify' ? 'Shopify' : 'Volusion / Mr. Chain';
     document.getElementById('setName').value    = s.name;
     document.getElementById('setAddress').value = s.address;
     document.getElementById('setPhone').value   = s.phone;
@@ -584,8 +643,9 @@
     document.getElementById('setUrl').value     = s.url;
     document.getElementById('setFooter').value  = s.footer;
     document.getElementById('setAccent').value  = /^#[0-9a-f]{6}$/i.test(s.accent) ? s.accent : DEFAULT_ACCENT;
-    document.getElementById('setName').placeholder = NAME_DEFAULTS[currentTab] || '';
-    document.getElementById('setUrl').placeholder  = 'https://' + (SITE_DEFAULTS[currentTab] || '');
+    document.getElementById('setName').placeholder = NAME_DEFAULTS[mod] || '';
+    document.getElementById('setAddress').placeholder = ADDRESS_DEFAULTS[mod] || '1234 Main St\nSuite 100\nCity ST 12345';
+    document.getElementById('setUrl').placeholder  = 'https://' + (SITE_DEFAULTS[mod] || '');
     showLogoPreview(s.logo);
   }
 
@@ -600,7 +660,7 @@
     if (!file) return;
     const reader = new FileReader();
     reader.onload = e => {
-      localStorage.setItem(`logo_${currentTab}`, e.target.result);
+      localStorage.setItem(`logo_${settingsModule()}`, e.target.result);
       showLogoPreview(e.target.result);
       refreshOutput();
     };
@@ -608,7 +668,7 @@
   }
 
   function removeLogo() {
-    localStorage.removeItem(`logo_${currentTab}`);
+    localStorage.removeItem(`logo_${settingsModule()}`);
     showLogoPreview('');
     refreshOutput();
   }
@@ -632,7 +692,11 @@
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 
-    const pasteTitle = { shopify: 'Paste Shopify Order Text', volusion: 'Paste Volusion Order Text' };
+    const pasteTitle = {
+      shopify:  'Paste Shopify Order Text',
+      volusion: 'Paste Volusion Order Text',
+      mrchain:  'Paste StanchionWorld Order Email',
+    };
     document.getElementById('pasteTitle').textContent = pasteTitle[tab];
 
     const instrShopify = `<strong>How to copy your order:</strong><br>
@@ -647,12 +711,28 @@
       3. Click in the box below and press <strong>Cmd+V</strong> to paste<br>
       4. Click <strong>Parse Order</strong>`;
 
-    document.getElementById('instructions').innerHTML = tab === 'shopify' ? instrShopify : instrVolusion;
+    const instrMrChain = `<strong>How to copy your order:</strong><br>
+      1. Open the <strong>StanchionWorld order confirmation email</strong><br>
+      2. Select the whole order — from <strong>CustomerID#</strong> down past the <strong>Grand Total</strong> — then <strong>Cmd+C</strong> to copy<br>
+      3. Click in the box below and press <strong>Cmd+V</strong> to paste<br>
+      4. Click <strong>Parse Order</strong> — the vendor defaults to Mr. Chain and pricing comes across with it`;
+
+    const instr = { shopify: instrShopify, volusion: instrVolusion, mrchain: instrMrChain };
+    document.getElementById('instructions').innerHTML = instr[tab];
     loadSettingsForm();
     document.getElementById('pasteArea').value = '';
     document.getElementById('fieldsCard').style.display = 'none';
     document.getElementById('outputCard').style.display = 'none';
     document.getElementById('errorMsg').style.display = 'none';
+  }
+
+  /** The price column and the totals only exist when there is pricing to show. */
+  function togglePricing() {
+    const on = document.getElementById('fShowPricing').checked;
+    document.querySelector('.items-table').classList.toggle('with-price', on);
+    document.getElementById('totalsGrid').style.display = on ? 'grid' : 'none';
+    document.getElementById('pricingHint').style.display = on ? 'block' : 'none';
+    refreshOutput();
   }
 
   // ── Parse ─────────────────────────────────────────────────
@@ -661,7 +741,8 @@
     if (!text) { showError('Please paste your order text first.'); return; }
     hideError();
 
-    const parsed = currentTab === 'shopify' ? parseShopify(text) : parseVolusion(text);
+    const parser = { shopify: parseShopify, volusion: parseVolusion, mrchain: parseMrChain };
+    const parsed = parser[currentTab](text);
     populateFields(parsed);
   }
 
@@ -885,6 +966,145 @@
     return { order_number: orderNum, date, vendor, ship_to: { name, company, street, city_state_zip: cityStateZip, country, phone }, items, notes: '' };
   }
 
+  // ── Mr. Chain Parser ──────────────────────────────────────
+  // Reads the StanchionWorld order confirmation email rather than the Volusion
+  // admin PO page, because that email is the only place the customer pricing
+  // appears. Its line table wraps: the code and description land on one line
+  // and the qty / price / total on the next, so rows are assembled across
+  // lines rather than taken one line at a time.
+  function parseMrChain(text) {
+    const raw     = text.replace(/\r/g, '').split('\n').map(l => l.replace(/ /g, ' '));
+    const trimmed = raw.map(l => l.trim());
+
+    const SECTION = /^(bill to|ship to|payment info|shipping method|order details|customer information)\s*:?\s*$/i;
+    const money   = v => (v || '').replace(/[^0-9.\-]/g, '');
+    const isMoney = v => /^\$?\s*-?[\d,]+(\.\d{1,2})?$/.test(v);
+
+    // "Your order number is 12232, placed 09/21/2026 at 12:16PM."
+    const orderMatch = text.match(/order number is\s*([\w-]+)/i);
+    const orderNum   = orderMatch ? orderMatch[1] : '';
+    const dateMatch  = text.match(/placed\s+(\d{1,2}\/\d{1,2}\/\d{4})/i) || text.match(/\b(\d{1,2}\/\d{1,2}\/\d{4})\b/);
+    const date       = dateMatch ? dateMatch[1] : '';
+
+    // Shipping method sits under its own heading, or inline after the colon.
+    let shipVia = '';
+    const smIdx = trimmed.findIndex(l => /^shipping method:?$/i.test(l));
+    if (smIdx !== -1) {
+      for (let j = smIdx + 1; j < trimmed.length; j++) {
+        if (!trimmed[j]) continue;
+        if (SECTION.test(trimmed[j])) break;
+        shipVia = trimmed[j];
+        break;
+      }
+    } else {
+      const inline = text.match(/Shipping Method:\s*(.+)/i);
+      if (inline) shipVia = inline[1].trim();
+    }
+    if (!shipVia) shipVia = 'UPS';
+
+    // Ship To, not Bill To — the billing address in this email is the
+    // customer's, and the PO bills StanchionWorld.
+    let name = '', company = '', street = '', cityStateZip = '', country = '', phone = '';
+    const stIdx = trimmed.findIndex(l => /^ship to:?$/i.test(l));
+    if (stIdx !== -1) {
+      const block = [];
+      for (let j = stIdx + 1; j < trimmed.length; j++) {
+        const l = trimmed[j];
+        if (!l) continue;
+        if (SECTION.test(l)) break;
+        if (l.includes('@')) continue;   // the customer's email is not the vendor's business
+        block.push(l);
+      }
+      name = block[0] || '';
+      const zipLine = block.findIndex(l => /\b[A-Z]{2}\s+\d{5}(-\d{4})?\b/.test(l));
+      if (zipLine !== -1) {
+        const midLines = block.slice(1, zipLine);
+        if (midLines.length >= 2) {
+          company = midLines.slice(0, -1).join(', ');
+          street  = midLines[midLines.length - 1];
+        } else {
+          street = midLines[0] || '';
+        }
+        cityStateZip = block[zipLine];
+        const isPhone  = l => /^[\+\(]?\d[\d\s\-\(\)\.]{6,}$/.test(l);
+        const afterZip1 = block[zipLine + 1] || '';
+        const afterZip2 = block[zipLine + 2] || '';
+        if (isPhone(afterZip1)) {
+          phone = afterZip1;
+        } else {
+          country = afterZip1;
+          phone   = isPhone(afterZip2) ? afterZip2 : '';
+        }
+      }
+    }
+
+    // Line items — "Code  Item  Qty  Price  Grand Total"
+    const items = [];
+    const headerIdx = trimmed.findIndex(l => /^code\b.*\bitem\b.*\bqty\b/i.test(l));
+    let pending = null;
+    if (headerIdx !== -1) {
+      for (let j = headerIdx + 1; j < raw.length; j++) {
+        const t = trimmed[j];
+        if (!t) continue;
+        if (/^(thank you|visit us)/i.test(t)) break;
+
+        const cells    = raw[j].split('\t').map(c => c.trim());
+        const nonEmpty = cells.filter(Boolean);
+        if (!nonEmpty.length) continue;
+        // The totals rows are indented into the price columns, so the first
+        // cell is empty and the label lands in the second.
+        if (/^(subtotal|tax|shipping cost|grand total)\b/i.test(nonEmpty[0])) break;
+
+        // A row of nothing but numbers is the wrapped tail of the row above.
+        if (pending && nonEmpty.every(isMoney)) {
+          if (!pending.qty) pending.qty = nonEmpty[0].replace(/[^0-9.]/g, '');
+          if (nonEmpty.length >= 2) pending.price  = money(nonEmpty[1]);
+          if (nonEmpty.length >= 3) pending.amount = money(nonEmpty[2]);
+          continue;
+        }
+
+        // "[Color:Yellow]" option lines, which can carry the qty cells too.
+        if (/^\[/.test(nonEmpty[0])) {
+          if (pending) {
+            pending.options.push(nonEmpty[0].replace(/^\[\s*/, '').replace(/\s*\]$/, '').replace(/:(?!\s)/, ': '));
+            const rest = nonEmpty.slice(1);
+            if (rest[0] && !pending.qty) pending.qty = rest[0].replace(/[^0-9.]/g, '');
+            if (rest[1]) pending.price  = money(rest[1]);
+            if (rest[2]) pending.amount = money(rest[2]);
+          }
+          continue;
+        }
+
+        // A lone line under an item is the rest of its description.
+        if (cells.length === 1 && pending && !pending.description) { pending.description = t; continue; }
+        if (cells.length < 2) continue;
+
+        pending = { code: cells[0], description: cells[1] || '', qty: '', price: '', amount: '', options: [] };
+        if (cells[2]) pending.qty    = cells[2].replace(/[^0-9.]/g, '');
+        if (cells[3]) pending.price  = money(cells[3]);
+        if (cells[4]) pending.amount = money(cells[4]);
+        items.push(pending);
+      }
+    }
+
+    // Shipping is deliberately not read: the vendor is quoted goods only.
+    const grab     = re => { const m = text.match(re); return m ? money(m[1]) : ''; };
+    const subtotal = grab(/Subtotal:\s*\$?\s*([\d,]+\.\d{2})/i);
+    const tax      = grab(/Tax:\s*\$?\s*([\d,]+\.\d{2})/i);
+    const total    = (Number(subtotal || 0) + Number(tax || 0)).toFixed(2);
+
+    return {
+      order_number: orderNum,
+      date,
+      vendor: 'Mr. Chain',
+      ship_via: shipVia,
+      ship_to: { name, company, street, city_state_zip: cityStateZip, country, phone },
+      items: items.map(i => ({ ...i, options: i.options.join('\n') })),
+      pricing: { show: true, subtotal, tax, total: subtotal ? total : '' },
+      notes: '',
+    };
+  }
+
   // Helper: find which line index contains a substring
   function getLineIndex(lines, substr) {
     const s = substr.substring(0, 20);
@@ -899,6 +1119,14 @@
     document.getElementById('fRequiredBy').value = '';
     document.getElementById('fCustomerRef').value = '';
     document.getElementById('fVendorContact').value = '';
+    document.getElementById('fShipVia').value = d.ship_via || '';
+
+    const pricing = d.pricing || { show: false, subtotal: '', tax: '', total: '' };
+    document.getElementById('fShowPricing').checked = !!pricing.show;
+    document.getElementById('fSubtotal').value = pricing.subtotal || '';
+    document.getElementById('fTax').value      = pricing.tax || '';
+    document.getElementById('fTotal').value    = pricing.total || '';
+    togglePricing();
     document.getElementById('fName').value = d.ship_to?.name || '';
     document.getElementById('fCompany').value = d.ship_to?.company || '';
     document.getElementById('fStreet').value = d.ship_to?.street || '';
@@ -910,7 +1138,7 @@
     const tbody = document.getElementById('itemsBody');
     tbody.innerHTML = '';
     const items = d.items?.length ? d.items : [{ code: '', description: '', qty: '', options: '' }];
-    items.forEach(i => addItemRow(i.code, i.description, i.qty, i.options || ''));
+    items.forEach(i => addItemRow(i.code, i.description, i.qty, i.options || '', i.price || ''));
 
     document.getElementById('fieldsCard').style.display = 'block';
     generatePO();
@@ -919,7 +1147,7 @@
   }
 
   // ── Items table ───────────────────────────────────────────
-  function addItemRow(code = '', desc = '', qty = '', options = '') {
+  function addItemRow(code = '', desc = '', qty = '', options = '', price = '') {
     const tbody = document.getElementById('itemsBody');
 
     const mainRow = document.createElement('tr');
@@ -928,6 +1156,7 @@
       <td><input type="text" value="${esc(code)}" placeholder="SKU" /></td>
       <td><input type="text" value="${esc(desc)}" placeholder="Item description" /></td>
       <td><input type="text" value="${esc(qty)}" placeholder="1" style="text-align:center" /></td>
+      <td class="price-col"><input type="text" value="${esc(price)}" placeholder="0.00" style="text-align:right" /></td>
       <td><button class="btn-del-row" onclick="deleteItemRow(this)">✕</button></td>
     `;
     tbody.appendChild(mainRow);
@@ -935,7 +1164,7 @@
     const optRow = document.createElement('tr');
     optRow.className = 'options-row';
     optRow.innerHTML = `
-      <td colspan="4">
+      <td colspan="5">
         <span class="options-label">Options / Variants</span>
         <textarea class="options-input" rows="2" placeholder="(one option per line, e.g. Color: Red)">${esc(options)}</textarea>
       </td>
@@ -979,15 +1208,17 @@
         code: inputs[0].value.trim(),
         desc: inputs[1].value.trim(),
         qty:  inputs[2].value.trim(),
+        price: inputs[3].value.trim(),
         options: optRow?.querySelector('textarea')?.value.trim() || '',
       };
     }).filter(i => i.code || i.desc);
   }
 
   function generatePO() {
-    const s      = getSettings(currentTab);
+    const mod    = settingsModule();
+    const s      = getSettings(mod);
     const accent = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s.accent) ? s.accent : DEFAULT_ACCENT;
-    const site   = (s.url || SITE_DEFAULTS[currentTab] || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    const site   = (s.url || SITE_DEFAULTS[mod] || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
 
     const vendor        = v('fVendor');
     const vendorContact = v('fVendorContact');
@@ -995,14 +1226,24 @@
     const date          = v('fDate');
     const requiredBy    = v('fRequiredBy');
     const customerRef   = v('fCustomerRef');
+    const shipVia       = v('fShipVia');
     const notes         = v('fNotes');
+
+    // Our price to the customer, shipping deliberately left out: the vendor is
+    // being told what the goods sold for, not what the carrier charged.
+    const priced   = document.getElementById('fShowPricing').checked;
+    const subtotal = v('fSubtotal');
+    const tax      = v('fTax');
+    const total    = v('fTotal');
 
     const shipToLines = [v('fName'), v('fCompany'), v('fStreet'), v('fCityStateZip'), v('fCountry'), v('fPhone')].filter(Boolean);
     const shipTo      = shipToLines.join('\n');
     const vendorBlock = [vendor, vendorContact].filter(Boolean).join('\n');
 
-    const buyerName  = s.name || NAME_DEFAULTS[currentTab] || site;
-    const buyerLines = [buyerName, ...s.address.split('\n').map(l => l.trim()).filter(Boolean)];
+    const buyerName  = s.name || NAME_DEFAULTS[mod] || site;
+    const address    = s.address.trim() || ADDRESS_DEFAULTS[mod] || '';
+    const addrLines  = address.split('\n').map(l => l.trim()).filter(Boolean);
+    const buyerLines = [buyerName, ...addrLines];
     const billTo     = buyerLines.join('\n');
     const items      = collectItems();
 
@@ -1011,7 +1252,7 @@
     const fromHtml = [
       s.logo ? `<img src="${s.logo}" alt="${esc(buyerName)}" style="display:block;max-width:220px;max-height:60px;margin-bottom:6px;" />` : '',
       s.logo ? '' : `<div style="font-size:17px;font-weight:700;letter-spacing:.3px;margin-bottom:3px;">${esc(buyerName)}</div>`,
-      ...s.address.split('\n').map(l => l.trim()).filter(Boolean).map(l => `<div>${esc(l)}</div>`),
+      ...addrLines.map(l => `<div>${esc(l)}</div>`),
       s.phone ? `<div>Tel ${esc(s.phone)}</div>` : '',
       s.email ? `<div>${esc(s.email)}</div>` : '',
     ].join('');
@@ -1021,26 +1262,61 @@
         `<td style="padding:1px 0 1px 12px;font-size:12px;"><strong>${esc(val)}</strong></td></tr>`
       : '';
     const metaRows = metaRow('PO number', poNum) + metaRow('Date', date)
-                   + metaRow('Required by', requiredBy) + metaRow('Our customer ref', customerRef);
+                   + metaRow('Required by', requiredBy) + metaRow('Our customer ref', customerRef)
+                   + metaRow('Ship via', shipVia);
+
+    const MONEY = `${TD}text-align:right;width:92px;white-space:nowrap;`;
+    const cols   = priced ? 6 : 4;
+    const amountOf = it => {
+      const n = Number(it.price) * Number(it.qty || 0);
+      return Number.isFinite(n) && it.price !== '' ? n : null;
+    };
 
     const rowsHtml = items.length
       ? items.map((it, i) => {
           const note = it.options
             ? `<div style="color:#555;font-size:11px;margin-top:2px;white-space:pre-line;">${esc(it.options)}</div>`
             : '';
+          const amount = amountOf(it);
+          const priceCells = priced
+            ? `<td style="${MONEY}">${it.price === '' ? '—' : fmtMoney(it.price)}</td>` +
+              `<td style="${MONEY}">${amount === null ? '—' : fmtMoney(amount)}</td>`
+            : '';
           return `<tr>
             <td style="${TD}text-align:center;color:#666;width:30px;">${i + 1}</td>
             <td style="${TD}font-family:ui-monospace,Menlo,monospace;font-weight:600;white-space:nowrap;">${esc(it.code) || '—'}</td>
             <td style="${TD}">${esc(it.desc)}${note}</td>
             <td style="${TD}text-align:center;width:58px;">${esc(it.qty)}</td>
+            ${priceCells}
           </tr>`;
         }).join('')
-      : `<tr><td colspan="4" style="${TD}text-align:center;color:#999;">No items</td></tr>`;
+      : `<tr><td colspan="${cols}" style="${TD}text-align:center;color:#999;">No items</td></tr>`;
 
-    const secondRow = billTo.trim()
+    // Falls back to the sum of the lines, so an edited qty still totals up.
+    const lineSum = items.reduce((n, it) => n + (amountOf(it) || 0), 0);
+    const totalRow = (label, val, strong) => val === '' || val === null ? '' :
+      `<tr>
+         <td colspan="4" style="${TD}text-align:right;font-weight:600;${strong ? `border-top:2px solid ${accent};` : ''}">${esc(label)}</td>
+         <td colspan="2" style="${MONEY}${strong ? `border-top:2px solid ${accent};font-weight:700;` : ''}">${fmtMoney(val)}</td>
+       </tr>`;
+    const totalsHtml = priced
+      ? `<tfoot>
+           ${totalRow('Subtotal', subtotal !== '' ? subtotal : lineSum)}
+           ${totalRow('Tax', tax)}
+           ${totalRow('Total', total !== '' ? total : (Number(subtotal !== '' ? subtotal : lineSum) + Number(tax || 0)), true)}
+         </tfoot>`
+      : '';
+
+    // The bill-to is what tells Mr. Chain who is paying, so an unset address is
+    // called out rather than quietly dropped.
+    const billToSet   = address !== '';
+    const billToBlock = billToSet
+      ? docBlock('Bill to', billTo)
+      : docBlock('Bill to', `${buyerName}\nSET YOUR BILL-TO ADDRESS IN COMPANY SETTINGS`, true);
+    const secondRow = (billToSet || currentTab === 'mrchain')
       ? `<table style="width:100%;border-collapse:collapse;margin:0 0 16px;">
            <tr>
-             <td style="width:50%;vertical-align:top;padding-right:13px;">${docBlock('Bill to', billTo)}</td>
+             <td style="width:50%;vertical-align:top;padding-right:13px;">${billToBlock}</td>
              <td style="width:50%;vertical-align:top;padding-left:13px;"></td>
            </tr>
          </table>`
@@ -1094,9 +1370,12 @@
         <th style="${TH}text-align:left;width:24%;">Part number</th>
         <th style="${TH}text-align:left;">Description</th>
         <th style="${TH}text-align:center;width:58px;">Qty</th>
+        ${priced ? `<th style="${TH}text-align:right;width:92px;">Unit price</th>` : ''}
+        ${priced ? `<th style="${TH}text-align:right;width:92px;">Amount</th>` : ''}
       </tr>
     </thead>
     <tbody>${rowsHtml}</tbody>
+    ${totalsHtml}
   </table>
 
   ${instructionsHtml}
@@ -1111,7 +1390,9 @@
     const C = 4, P = 16, I = 52;
     const txtRows = items.length
       ? items.map((it, i) => {
-          const main = pad(String(i + 1), C) + pad(it.code, P) + pad(it.desc, I) + it.qty;
+          const amount = amountOf(it);
+          const main = pad(String(i + 1), C) + pad(it.code, P) + pad(it.desc, I) + pad(it.qty, 6)
+            + (priced ? pad(it.price === '' ? '—' : fmtMoney(it.price), 11) + (amount === null ? '—' : fmtMoney(amount)) : '');
           const opts = it.options
             ? it.options.split('\n').filter(l => l.trim()).map(l => ' '.repeat(C + P) + l.trim()).join('\n')
             : '';
@@ -1128,13 +1409,19 @@
         date        ? `Date:             ${date}` : '',
         requiredBy  ? `Required by:      ${requiredBy}` : '',
         customerRef ? `Our customer ref: ${customerRef}` : '',
+        shipVia     ? `Ship via:         ${shipVia}` : '',
       ].filter(Boolean).join('\n'),
       ['VENDOR', vendorBlock || '—'].join('\n'),
       ['SHIP TO (DROP-SHIP)', shipTo || 'NO DELIVERY ADDRESS — do not send this purchase order'].join('\n'),
-      [pad('#', C) + pad('PART NUMBER', P) + pad('DESCRIPTION', I) + 'QTY',
-        '─'.repeat(C + P + I + 4),
+      [pad('#', C) + pad('PART NUMBER', P) + pad('DESCRIPTION', I) + pad('QTY', 6) + (priced ? pad('UNIT', 11) + 'AMOUNT' : ''),
+        '─'.repeat(C + P + I + (priced ? 23 : 6)),
         txtRows,
       ].join('\n'),
+      priced ? [
+        `Subtotal: ${fmtMoney(subtotal !== '' ? subtotal : lineSum)}`,
+        tax !== '' ? `Tax:      ${fmtMoney(tax)}` : '',
+        `Total:    ${fmtMoney(total !== '' ? total : (Number(subtotal !== '' ? subtotal : lineSum) + Number(tax || 0)))}`,
+      ].filter(Boolean).join('\n') : '',
       notes ? ['SPECIAL INSTRUCTIONS', notes].join('\n') : '',
       [s.footer, site].filter(Boolean).join('\n'),
     ].filter(Boolean).join('\n\n');
@@ -1157,6 +1444,11 @@
   }
 
   function v(id) { return (document.getElementById(id)?.value || '').trim(); }
+
+  function fmtMoney(value) {
+    const n = Number(String(value).replace(/[^0-9.\-]/g, ''));
+    return Number.isFinite(n) ? '$' + n.toFixed(2) : String(value);
+  }
 
   function pad(str, len) {
     str = String(str);

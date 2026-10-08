@@ -278,7 +278,7 @@
       cursor: pointer;
     }
     .btn-blank:hover { text-decoration: underline; }
-    .totals-grid.wide { grid-template-columns: repeat(4, 1fr); max-width: 560px; }
+    .totals-grid.wide { grid-template-columns: repeat(5, 1fr); max-width: 700px; }
     .pricing-toggle {
       display: flex;
       align-items: center;
@@ -504,6 +504,11 @@
               oninput="saveSetting('footer', this.value)" />
           </div>
           <div class="field-group">
+            <label>Next Quote Number</label>
+            <input id="setQuoteSeq" type="text" placeholder="3278"
+              oninput="saveSetting('quoteSeq', this.value)" />
+          </div>
+          <div class="field-group">
             <label>Accent colour</label>
             <div class="accent-row">
               <input id="setAccent" type="color" value="#111111"
@@ -659,6 +664,10 @@
           oninput="this.dataset.touched = this.value.trim() ? '1' : ''; recomputeTotal()" />
       </div>
       <div class="field-group customer-only" style="display:none;">
+        <label>Discount</label>
+        <input type="text" id="fDiscount" placeholder="250.00 or 10%" oninput="recomputeTotal()" />
+      </div>
+      <div class="field-group customer-only" style="display:none;">
         <label>Shipping</label>
         <input type="text" id="fShipping" placeholder="15.00" oninput="recomputeTotal()" />
       </div>
@@ -785,10 +794,27 @@
     const total = document.getElementById('fTotal');
     if (total.dataset.touched !== '1') {
       const num = id => Number((document.getElementById(id)?.value || '').replace(/[^0-9.\-]/g, '')) || 0;
-      const sum = num('fSubtotal') + num('fTax') + (customerFacing() ? num('fShipping') : 0);
+      const goods = num('fSubtotal');
+      const off = customerFacing() ? discountOf(goods).amount : 0;
+      const sum = goods - off + num('fTax') + (customerFacing() ? num('fShipping') : 0);
       total.value = sum ? sum.toFixed(2) : '';
     }
     refreshOutput();
+  }
+
+  /**
+   * Hands out the next quote number and moves the counter on. Drafts that are
+   * abandoned do burn a number, which is the ordinary cost of numbering a
+   * document the moment it is started rather than when it is sent.
+   */
+  function nextQuoteNumber() {
+    const mod = settingsModule();
+    const stored = Number(localStorage.getItem(settingKey(mod, 'quoteSeq')));
+    const n = Number.isFinite(stored) && stored > 0 ? Math.floor(stored) : QUOTE_START;
+    localStorage.setItem(settingKey(mod, 'quoteSeq'), String(n + 1));
+    const field = document.getElementById('setQuoteSeq');
+    if (field) field.value = String(n + 1);
+    return String(n);
   }
 
   /** A quote usually comes before there is any order to paste. */
@@ -807,8 +833,25 @@
 
     if (currentDoc === 'quote') {
       document.getElementById('fValidUntil').value = fmt(new Date(today.getTime() + 30 * 864e5));
+      document.getElementById('fPoNum').value = nextQuoteNumber();
+      generatePO();
     }
     document.getElementById('fieldsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /**
+   * A discount typed as "250" is money off; "10%" is a share of the subtotal.
+   * Quotes get haggled in both currencies, so the field takes either.
+   */
+  function discountOf(goods) {
+    const raw = (document.getElementById('fDiscount')?.value || '').trim();
+    if (!raw) return { amount: 0, label: 'Discount' };
+    const n = Number(raw.replace(/[^0-9.\-]/g, '')) || 0;
+    const pct = raw.includes('%');
+    return {
+      amount: pct ? (goods * n) / 100 : n,
+      label: pct ? `Discount (${n}%)` : 'Discount',
+    };
   }
 
   /** The line table is the source of the subtotal until somebody types over it. */
@@ -830,6 +873,9 @@
   // logo-only version that came before: logo_<mod> and logoUrl_<mod> are what
   // shops already have in localStorage, so nobody loses their logo.
   const DEFAULT_ACCENT = '#111111';
+  // Where the quote numbering picks up. Each letterhead runs its own sequence,
+  // and the next number is editable in settings so a run can be resumed.
+  const QUOTE_START = 3278;
   const SITE_DEFAULTS  = { shopify: 'www.thecrowdcontroller.com', volusion: 'www.stanchionworld.com' };
   const NAME_DEFAULTS  = { shopify: 'The Crowd Controller', volusion: 'StanchionWorld' };
   // Printed as the bill-to until someone types something else into settings, so
@@ -854,6 +900,7 @@
       email:   g('email'),
       footer:  g('footer'),
       accent:  g('accent') || DEFAULT_ACCENT,
+      quoteSeq: g('quoteSeq'),
     };
   }
 
@@ -874,6 +921,7 @@
     document.getElementById('setEmail').value   = s.email;
     document.getElementById('setUrl').value     = s.url;
     document.getElementById('setFooter').value  = s.footer;
+    document.getElementById('setQuoteSeq').value = s.quoteSeq || String(QUOTE_START);
     document.getElementById('setAccent').value  = /^#[0-9a-f]{6}$/i.test(s.accent) ? s.accent : DEFAULT_ACCENT;
     document.getElementById('setName').placeholder = NAME_DEFAULTS[mod] || '';
     document.getElementById('setAddress').placeholder = ADDRESS_DEFAULTS[mod] || '1234 Main St\nSuite 100\nCity ST 12345';
@@ -1380,6 +1428,7 @@
     document.getElementById('fSubtotal').value = pricing.subtotal || '';
     document.getElementById('fTax').value      = pricing.tax || '';
     document.getElementById('fShipping').value = pricing.shipping || '';
+    document.getElementById('fDiscount').value = pricing.discount || '';
     document.getElementById('fTotal').value    = pricing.total || '';
     // A parsed subtotal is what the order actually came to, so it stands; a
     // blank one is handed to the line table to work out.
@@ -1566,16 +1615,24 @@
 
     // Falls back to the sum of the lines, so an edited qty still totals up.
     const lineSum = items.reduce((n, it) => n + (amountOf(it) || 0), 0);
-    const totalRow = (label, val, strong) => val === '' || val === null ? '' :
+    const totalRowText = (label, display, strong) =>
       `<tr>
          <td colspan="4" style="${TD}text-align:right;font-weight:600;${strong ? `border-top:2px solid ${accent};` : ''}">${esc(label)}</td>
-         <td colspan="2" style="${MONEY}${strong ? `border-top:2px solid ${accent};font-weight:700;` : ''}">${fmtMoney(val)}</td>
+         <td colspan="2" style="${MONEY}${strong ? `border-top:2px solid ${accent};font-weight:700;` : ''}">${display}</td>
        </tr>`;
-    const goods     = subtotal !== '' ? Number(subtotal) : lineSum;
-    const grandTotal = total !== '' ? Number(total) : goods + Number(tax || 0) + Number(shipping || 0);
+    const totalRow = (label, val, strong) =>
+      val === '' || val === null ? '' : totalRowText(label, fmtMoney(val), strong);
+    const goods    = subtotal !== '' ? Number(subtotal) : lineSum;
+    // A bare positive number in a totals column reads as something added, so a
+    // discount is shown as the deduction it is.
+    const discount = forCustomer ? discountOf(goods) : { amount: 0, label: 'Discount' };
+    const grandTotal = total !== ''
+      ? Number(total)
+      : goods - discount.amount + Number(tax || 0) + Number(shipping || 0);
     const totalsHtml = priced
       ? `<tfoot>
            ${totalRow('Subtotal', goods)}
+           ${discount.amount ? totalRowText(discount.label, '−' + fmtMoney(discount.amount)) : ''}
            ${forCustomer ? totalRow('Shipping', shipping) : ''}
            ${totalRow('Tax', tax)}
            ${totalRow('Total', grandTotal, true)}
@@ -1709,6 +1766,9 @@
       ].join('\n'),
       priced ? [
         `Subtotal: ${fmtMoney(goods)}`,
+        discount.amount
+          ? `Discount: −${fmtMoney(discount.amount)}${discount.label === 'Discount' ? '' : ` (${discount.label.replace(/^Discount \(|\)$/g, '')})`}`
+          : '',
         forCustomer && shipping !== '' ? `Shipping: ${fmtMoney(shipping)}` : '',
         tax !== '' ? `Tax:      ${fmtMoney(tax)}` : '',
         `Total:    ${fmtMoney(grandTotal)}`,

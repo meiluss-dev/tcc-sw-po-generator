@@ -235,6 +235,26 @@
       transition: all 0.15s;
     }
     .doc-btn.active { background: #4a6fa5; border-color: #4a6fa5; color: #fff; }
+    .letterhead-note {
+      font-size: 0.8rem;
+      color: #888;
+      margin: -12px 0 18px;
+    }
+    .letterhead-note strong { color: #444; }
+    .paste-toggle {
+      display: none;
+      background: none;
+      border: none;
+      color: #4a6fa5;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+    }
+    .paste-toggle:hover { text-decoration: underline; }
+    #pasteCard.collapsed > h2 { display: none; }
+    #pasteCard.collapsed #pasteBody { display: none; }
+    #pasteCard.collapsed .paste-toggle { display: block; }
     .btn-blank {
       display: block;
       width: 100%;
@@ -500,11 +520,14 @@
     <button class="doc-btn" onclick="switchDoc('quote', this)">Quote</button>
     <button class="doc-btn" onclick="switchDoc('invoice', this)">Invoice</button>
   </div>
+  <p class="letterhead-note" id="letterheadNote" style="display:none;"></p>
 
   <!-- Paste Card -->
-  <div class="card">
+  <div class="card" id="pasteCard">
     <h2 id="pasteTitle">Paste Shopify Order Text</h2>
+    <button class="paste-toggle" id="pasteToggle" onclick="expandPaste()">▸ …or build it from a pasted order</button>
 
+    <div id="pasteBody">
     <div class="instructions" id="instructions">
       <strong>How to copy your order:</strong><br>
       1. Open the order page in Shopify Admin<br>
@@ -519,6 +542,7 @@
 
     <button class="btn-parse" onclick="parseOrder()">Parse Order</button>
     <button class="btn-blank" onclick="startBlank()">Start a blank document instead</button>
+    </div>
   </div>
 
   <!-- Editable Fields Card -->
@@ -564,7 +588,7 @@
         <textarea id="fBillTo" rows="3" placeholder="JLL&#10;joseph sutton&#10;3014 Nassau Street&#10;Everett, WA 98201"></textarea>
       </div>
       <div class="field-group">
-        <label>Ship To — Name</label>
+        <label id="shipNameLabel">Ship To — Name</label>
         <input type="text" id="fName" placeholder="George Barber" />
       </div>
       <div class="field-group">
@@ -617,7 +641,8 @@
     <div class="totals-grid" id="totalsGrid" style="display:none;">
       <div class="field-group">
         <label>Subtotal</label>
-        <input type="text" id="fSubtotal" placeholder="60.00" oninput="recomputeTotal()" />
+        <input type="text" id="fSubtotal" placeholder="60.00"
+          oninput="this.dataset.touched = this.value.trim() ? '1' : ''; recomputeTotal()" />
       </div>
       <div class="field-group customer-only" style="display:none;">
         <label>Shipping</label>
@@ -629,7 +654,8 @@
       </div>
       <div class="field-group">
         <label>Total</label>
-        <input type="text" id="fTotal" placeholder="60.00" />
+        <input type="text" id="fTotal" placeholder="60.00"
+          oninput="this.dataset.touched = this.value.trim() ? '1' : ''; refreshOutput()" />
       </div>
     </div>
     <p class="hint" id="pricingHint" style="display:none;margin-top:6px;">
@@ -696,24 +722,78 @@
     if (customerFacing()) pricing.checked = true;
     pricing.disabled = customerFacing();
 
+    // Only the Name carries the prefix, and on a customer document the person
+    // in that block is the customer rather than a drop-ship destination.
+    document.getElementById('shipNameLabel').textContent =
+      customerFacing() ? 'Customer — Name' : 'Ship To — Name';
+
+    // There is nothing to paste for a quote: it is raised before any order
+    // exists. So the paste box folds away and the form opens ready to type in.
+    const quoteMode = doc === 'quote';
+    document.getElementById('pasteCard').classList.toggle('collapsed', quoteMode);
+    showLetterheadNote(quoteMode);
+    if (quoteMode && document.getElementById('fieldsCard').style.display === 'none') startBlank();
+
     recomputeTotal();
     togglePricing();
   }
 
+  function expandPaste() {
+    document.getElementById('pasteCard').classList.remove('collapsed');
+  }
+
+  /** On a quote the tabs no longer pick a paste format — only whose paper it is. */
+  function showLetterheadNote(on) {
+    const el = document.getElementById('letterheadNote');
+    el.style.display = on ? 'block' : 'none';
+    if (!on) return;
+    const mod = settingsModule();
+    const name = getSettings(mod).name || NAME_DEFAULTS[mod] || '';
+    el.innerHTML = `On <strong>${esc(name)}</strong> letterhead — pick a tab above to change it.`;
+  }
+
   /** Keeps the grand total honest: goods only on a PO, shipping added for the customer. */
   function recomputeTotal() {
-    const num = id => Number((document.getElementById(id)?.value || '').replace(/[^0-9.\-]/g, '')) || 0;
-    const sub = document.getElementById('fSubtotal').value.trim();
-    if (sub === '') return;
-    const total = num('fSubtotal') + num('fTax') + (customerFacing() ? num('fShipping') : 0);
-    document.getElementById('fTotal').value = total.toFixed(2);
+    const total = document.getElementById('fTotal');
+    if (total.dataset.touched !== '1') {
+      const num = id => Number((document.getElementById(id)?.value || '').replace(/[^0-9.\-]/g, '')) || 0;
+      const sum = num('fSubtotal') + num('fTax') + (customerFacing() ? num('fShipping') : 0);
+      total.value = sum ? sum.toFixed(2) : '';
+    }
     refreshOutput();
   }
 
   /** A quote usually comes before there is any order to paste. */
   function startBlank() {
     hideError();
-    populateFields({ vendor: '', order_number: '', date: new Date().toLocaleDateString('en-US'), items: [] });
+    const fmt = d => `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
+    const today = new Date();
+    const blank = { code: '', description: '', qty: '', price: '', options: '' };
+    // A few rows, so a quote looks like a form to fill rather than a single line.
+    const rows = currentDoc === 'quote' ? 3 : 1;
+
+    populateFields({
+      vendor: '', order_number: '', date: fmt(today),
+      items: Array.from({ length: rows }, () => ({ ...blank })),
+    });
+
+    if (currentDoc === 'quote') {
+      document.getElementById('fValidUntil').value = fmt(new Date(today.getTime() + 30 * 864e5));
+    }
+    document.getElementById('fieldsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /** The line table is the source of the subtotal until somebody types over it. */
+  function linesChanged() {
+    const sub = document.getElementById('fSubtotal');
+    if (sub.dataset.touched !== '1') {
+      const sum = collectItems().reduce((n, it) => {
+        const amount = Number(it.price) * Number(it.qty || 0);
+        return n + (Number.isFinite(amount) ? amount : 0);
+      }, 0);
+      sub.value = sum ? sum.toFixed(2) : '';
+    }
+    recomputeTotal();
   }
 
 
@@ -843,6 +923,7 @@
     const instr = { shopify: instrShopify, volusion: instrVolusion, mrchain: instrMrChain };
     document.getElementById('instructions').innerHTML = instr[tab];
     loadSettingsForm();
+    showLetterheadNote(currentDoc === 'quote');
     document.getElementById('pasteArea').value = '';
     document.getElementById('fieldsCard').style.display = 'none';
     document.getElementById('outputCard').style.display = 'none';
@@ -1268,6 +1349,10 @@
     document.getElementById('fTax').value      = pricing.tax || '';
     document.getElementById('fShipping').value = pricing.shipping || '';
     document.getElementById('fTotal').value    = pricing.total || '';
+    // A parsed subtotal is what the order actually came to, so it stands; a
+    // blank one is handed to the line table to work out.
+    document.getElementById('fSubtotal').dataset.touched = pricing.subtotal ? '1' : '';
+    document.getElementById('fTotal').dataset.touched = '';
     recomputeTotal();
     togglePricing();
     document.getElementById('fName').value = d.ship_to?.name || '';
@@ -1298,8 +1383,8 @@
     mainRow.innerHTML = `
       <td><input type="text" value="${esc(code)}" placeholder="SKU" /></td>
       <td><input type="text" value="${esc(desc)}" placeholder="Item description" /></td>
-      <td><input type="text" value="${esc(qty)}" placeholder="1" style="text-align:center" /></td>
-      <td class="price-col"><input type="text" value="${esc(price)}" placeholder="0.00" style="text-align:right" /></td>
+      <td><input type="text" value="${esc(qty)}" placeholder="1" style="text-align:center" oninput="linesChanged()" /></td>
+      <td class="price-col"><input type="text" value="${esc(price)}" placeholder="0.00" style="text-align:right" oninput="linesChanged()" /></td>
       <td><button class="btn-del-row" onclick="deleteItemRow(this)">✕</button></td>
     `;
     tbody.appendChild(mainRow);
@@ -1320,6 +1405,7 @@
     const optRow = mainRow.nextElementSibling;
     if (optRow && optRow.classList.contains('options-row')) optRow.remove();
     mainRow.remove();
+    linesChanged();
   }
 
   function esc(s) {
@@ -1617,7 +1703,9 @@
 
   function fmtMoney(value) {
     const n = Number(String(value).replace(/[^0-9.\-]/g, ''));
-    return Number.isFinite(n) ? '$' + n.toFixed(2) : String(value);
+    return Number.isFinite(n)
+      ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : String(value);
   }
 
   function pad(str, len) {

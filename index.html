@@ -241,6 +241,16 @@
       margin: -12px 0 18px;
     }
     .letterhead-note strong { color: #444; }
+    .link-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      font: inherit;
+      color: #4a6fa5;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: underline;
+    }
     .paste-toggle {
       display: none;
       background: none;
@@ -520,7 +530,7 @@
     <button class="doc-btn" onclick="switchDoc('quote', this)">Quote</button>
     <button class="doc-btn" onclick="switchDoc('invoice', this)">Invoice</button>
   </div>
-  <p class="letterhead-note" id="letterheadNote" style="display:none;"></p>
+  <p class="letterhead-note" id="letterheadNote"></p>
 
   <!-- Paste Card -->
   <div class="card" id="pasteCard">
@@ -584,8 +594,12 @@
         <input type="text" id="fPaymentTerms" placeholder="Net 30 — or Paid, MasterCard" />
       </div>
       <div class="field-group customer-only" style="display:none;grid-column:1 / -1;">
-        <label>Bill To — Customer (leave blank to reuse the ship-to)</label>
+        <label>Bill To — leave blank to use the customer address below</label>
         <textarea id="fBillTo" rows="3" placeholder="JLL&#10;joseph sutton&#10;3014 Nassau Street&#10;Everett, WA 98201"></textarea>
+      </div>
+      <div class="field-group customer-only" style="display:none;grid-column:1 / -1;">
+        <label>Ship To — leave blank to use the customer address below</label>
+        <textarea id="fShipToBox" rows="3" placeholder="Harbor Point Hotel — Receiving&#10;410 Bayshore Dr&#10;Tampa, FL 33606"></textarea>
       </div>
       <div class="field-group">
         <label id="shipNameLabel">Ship To — Name</label>
@@ -731,7 +745,7 @@
     // exists. So the paste box folds away and the form opens ready to type in.
     const quoteMode = doc === 'quote';
     document.getElementById('pasteCard').classList.toggle('collapsed', quoteMode);
-    showLetterheadNote(quoteMode);
+    showLetterheadNote();
     if (quoteMode && document.getElementById('fieldsCard').style.display === 'none') startBlank();
 
     recomputeTotal();
@@ -742,14 +756,28 @@
     document.getElementById('pasteCard').classList.remove('collapsed');
   }
 
-  /** On a quote the tabs no longer pick a paste format — only whose paper it is. */
-  function showLetterheadNote(on) {
-    const el = document.getElementById('letterheadNote');
-    el.style.display = on ? 'block' : 'none';
-    if (!on) return;
-    const mod = settingsModule();
-    const name = getSettings(mod).name || NAME_DEFAULTS[mod] || '';
-    el.innerHTML = `On <strong>${esc(name)}</strong> letterhead — pick a tab above to change it.`;
+  /**
+   * Whose paper the document is on. It matters most on a quote, where the tabs
+   * are no longer picking a paste format, and it is the one place the logo is
+   * worth pointing at — the uploader is otherwise folded away in settings.
+   */
+  function showLetterheadNote() {
+    const mod  = settingsModule();
+    const s    = getSettings(mod);
+    const name = s.name || NAME_DEFAULTS[mod] || '';
+    document.getElementById('letterheadNote').innerHTML =
+      `On <strong>${esc(name)}</strong> letterhead — switch with the tabs above, or ` +
+      `<button class="link-btn" onclick="openSettings()">${s.logo ? 'change the logo' : 'upload a logo'}</button>.`;
+  }
+
+  /** Opens the settings panel on the logo, from wherever the user is. */
+  function openSettings() {
+    const body = document.getElementById('settingsBody');
+    if (!body.classList.contains('open')) {
+      body.classList.add('open');
+      document.querySelector('.settings-toggle').textContent = '⚙ Company Settings ▲';
+    }
+    body.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   /** Keeps the grand total honest: goods only on a PO, shipping added for the customer. */
@@ -831,6 +859,7 @@
 
   function saveSetting(key, value) {
     localStorage.setItem(settingKey(settingsModule(), key), value);
+    if (key === 'name') showLetterheadNote();
     refreshOutput();
   }
 
@@ -865,6 +894,7 @@
     reader.onload = e => {
       localStorage.setItem(`logo_${settingsModule()}`, e.target.result);
       showLogoPreview(e.target.result);
+      showLetterheadNote();
       refreshOutput();
     };
     reader.readAsDataURL(file);
@@ -873,6 +903,7 @@
   function removeLogo() {
     localStorage.removeItem(`logo_${settingsModule()}`);
     showLogoPreview('');
+    showLetterheadNote();
     refreshOutput();
   }
 
@@ -923,7 +954,7 @@
     const instr = { shopify: instrShopify, volusion: instrVolusion, mrchain: instrMrChain };
     document.getElementById('instructions').innerHTML = instr[tab];
     loadSettingsForm();
-    showLetterheadNote(currentDoc === 'quote');
+    showLetterheadNote();
     document.getElementById('pasteArea').value = '';
     document.getElementById('fieldsCard').style.display = 'none';
     document.getElementById('outputCard').style.display = 'none';
@@ -1342,6 +1373,7 @@
     document.getElementById('fVendorContact').value = '';
     document.getElementById('fShipVia').value = d.ship_via || '';
     document.getElementById('fBillTo').value = d.bill_to || '';
+    document.getElementById('fShipToBox').value = '';
 
     const pricing = d.pricing || { show: false, subtotal: '', tax: '', shipping: '', total: '' };
     document.getElementById('fShowPricing').checked = customerFacing() || !!pricing.show;
@@ -1479,7 +1511,10 @@
     const addrLines  = address.split('\n').map(l => l.trim()).filter(Boolean);
     const buyerLines = [buyerName, ...addrLines];
     const ourBillTo  = buyerLines.join('\n');
+    // Both boxes are overrides: left empty, the customer block below them is
+    // the address for each, which is the usual case of one address doing both.
     const custBillTo = v('fBillTo') || shipTo;
+    const shipBlock  = forCustomer ? (v('fShipToBox') || shipTo) : shipTo;
     const items      = collectItems();
 
     // A wordmark logo already carries the name, so the name only prints when
@@ -1563,7 +1598,7 @@
     const shipWarn = forCustomer
       ? 'NO DELIVERY ADDRESS'
       : 'NO DELIVERY ADDRESS — do not send this purchase order';
-    const rightBlock = shipTo ? docBlock(shipHead, shipTo) : docBlock(shipHead, shipWarn, true);
+    const rightBlock = shipBlock ? docBlock(shipHead, shipBlock) : docBlock(shipHead, shipWarn, true);
 
     const secondRowCells = forCustomer
       ? (currentDoc === 'invoice' && paymentTerms ? docBlock('Payment', paymentTerms) : '')
@@ -1666,7 +1701,7 @@
       forCustomer
         ? ['BILL TO', custBillTo || '—'].join('\n')
         : ['VENDOR', vendorBlock || '—'].join('\n'),
-      [forCustomer ? 'SHIP TO' : 'SHIP TO (DROP-SHIP)', shipTo || shipWarn].join('\n'),
+      [forCustomer ? 'SHIP TO' : 'SHIP TO (DROP-SHIP)', shipBlock || shipWarn].join('\n'),
       currentDoc === 'invoice' && paymentTerms ? ['PAYMENT', paymentTerms].join('\n') : '',
       [pad('#', C) + pad('PART NUMBER', P) + pad('DESCRIPTION', I) + pad('QTY', 6) + (priced ? pad('UNIT', 11) + 'AMOUNT' : ''),
         '─'.repeat(C + P + I + (priced ? 23 : 6)),
@@ -1764,6 +1799,7 @@
   function hideError() { document.getElementById('errorMsg').style.display = 'none'; }
 
   loadSettingsForm();
+  showLetterheadNote();
 </script>
 </body>
 </html>

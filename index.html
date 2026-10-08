@@ -208,6 +208,47 @@
       overflow-x: auto;
     }
 
+    .doc-types {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .doc-types-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-right: 4px;
+    }
+    .doc-btn {
+      padding: 7px 18px;
+      border: 1px solid #d0d5dd;
+      border-radius: 20px;
+      background: #fff;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #666;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .doc-btn.active { background: #4a6fa5; border-color: #4a6fa5; color: #fff; }
+    .btn-blank {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      margin-top: 8px;
+      background: none;
+      border: none;
+      color: #4a6fa5;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-blank:hover { text-decoration: underline; }
+    .totals-grid.wide { grid-template-columns: repeat(4, 1fr); max-width: 560px; }
     .pricing-toggle {
       display: flex;
       align-items: center;
@@ -452,6 +493,14 @@
     <button class="tab-btn" onclick="switchTab('mrchain', this)">Mr. Chain</button>
   </div>
 
+  <!-- What the paste turns into. The tab picks the source; this picks the document. -->
+  <div class="doc-types">
+    <span class="doc-types-label">Document</span>
+    <button class="doc-btn active" onclick="switchDoc('po', this)">Purchase Order</button>
+    <button class="doc-btn" onclick="switchDoc('quote', this)">Quote</button>
+    <button class="doc-btn" onclick="switchDoc('invoice', this)">Invoice</button>
+  </div>
+
   <!-- Paste Card -->
   <div class="card">
     <h2 id="pasteTitle">Paste Shopify Order Text</h2>
@@ -469,27 +518,28 @@
     <div class="error-msg" id="errorMsg"></div>
 
     <button class="btn-parse" onclick="parseOrder()">Parse Order</button>
+    <button class="btn-blank" onclick="startBlank()">Start a blank document instead</button>
   </div>
 
   <!-- Editable Fields Card -->
   <div class="card" id="fieldsCard" style="display:none;">
-    <h2>Extracted Order Details</h2>
-    <p class="hint">Review and edit any fields before generating the PO.</p>
+    <h2 id="fieldsHeading">Extracted Order Details</h2>
+    <p class="hint">Review and edit any fields before generating the document.</p>
 
     <div class="fields-grid">
-      <div class="field-group">
+      <div class="field-group vendor-only">
         <label>Vendor Name</label>
         <input type="text" id="fVendor" placeholder="Mr. Chain" />
       </div>
       <div class="field-group">
-        <label>PO Number</label>
+        <label id="poNumLabel">PO number</label>
         <input type="text" id="fPoNum" placeholder="002407-TCC" />
       </div>
       <div class="field-group">
         <label>Date</label>
         <input type="text" id="fDate" placeholder="05/01/2026" />
       </div>
-      <div class="field-group">
+      <div class="field-group vendor-only">
         <label>Required By (optional)</label>
         <input type="text" id="fRequiredBy" placeholder="05/15/2026" />
       </div>
@@ -500,6 +550,18 @@
       <div class="field-group">
         <label>Ship Via</label>
         <input type="text" id="fShipVia" placeholder="UPS Ground" />
+      </div>
+      <div class="field-group quote-only" style="display:none;">
+        <label>Valid Until</label>
+        <input type="text" id="fValidUntil" placeholder="30 days from today" />
+      </div>
+      <div class="field-group invoice-only" style="display:none;">
+        <label>Payment Terms</label>
+        <input type="text" id="fPaymentTerms" placeholder="Net 30 — or Paid, MasterCard" />
+      </div>
+      <div class="field-group customer-only" style="display:none;grid-column:1 / -1;">
+        <label>Bill To — Customer (leave blank to reuse the ship-to)</label>
+        <textarea id="fBillTo" rows="3" placeholder="JLL&#10;joseph sutton&#10;3014 Nassau Street&#10;Everett, WA 98201"></textarea>
       </div>
       <div class="field-group">
         <label>Ship To — Name</label>
@@ -527,7 +589,7 @@
       </div>
     </div>
 
-    <div class="field-group" style="margin-bottom:16px;">
+    <div class="field-group vendor-only" style="margin-bottom:16px;">
       <label>Vendor Contact (optional)</label>
       <textarea id="fVendorContact" rows="2" placeholder="Contact name&#10;orders@vendor.com&#10;+1 555-000-0000"></textarea>
     </div>
@@ -549,17 +611,21 @@
 
     <label class="pricing-toggle">
       <input type="checkbox" id="fShowPricing" onchange="togglePricing()" />
-      Show our customer pricing on the PO
+      <span id="pricingLabel">Show our customer pricing on the PO</span>
     </label>
 
     <div class="totals-grid" id="totalsGrid" style="display:none;">
       <div class="field-group">
         <label>Subtotal</label>
-        <input type="text" id="fSubtotal" placeholder="60.00" />
+        <input type="text" id="fSubtotal" placeholder="60.00" oninput="recomputeTotal()" />
+      </div>
+      <div class="field-group customer-only" style="display:none;">
+        <label>Shipping</label>
+        <input type="text" id="fShipping" placeholder="15.00" oninput="recomputeTotal()" />
       </div>
       <div class="field-group">
         <label>Tax</label>
-        <input type="text" id="fTax" placeholder="0.00" />
+        <input type="text" id="fTax" placeholder="0.00" oninput="recomputeTotal()" />
       </div>
       <div class="field-group">
         <label>Total</label>
@@ -593,6 +659,63 @@
 
 <script>
   let currentTab = 'shopify';
+  let currentDoc = 'po';
+
+  // One layout, three jobs. A purchase order tells a supplier what to make and
+  // where to send it; a quote tells a customer what it would cost; an invoice
+  // tells that customer what they owe. The parties swap round between them,
+  // which is the whole of the difference.
+  const DOC_LABELS = {
+    po:      { title: 'PURCHASE ORDER', number: 'PO number',      heading: 'Extracted Order Details', pricing: 'Show our customer pricing on the PO' },
+    quote:   { title: 'QUOTE',          number: 'Quote number',   heading: 'Quote Details',           pricing: 'Pricing (always shown on a quote)' },
+    invoice: { title: 'INVOICE',        number: 'Invoice number', heading: 'Invoice Details',         pricing: 'Pricing (always shown on an invoice)' },
+  };
+
+  /** Quotes and invoices go to the customer; a PO goes to the supplier. */
+  function customerFacing() { return currentDoc !== 'po'; }
+
+  function switchDoc(doc, btn) {
+    currentDoc = doc;
+    document.querySelectorAll('.doc-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const L = DOC_LABELS[doc];
+    document.getElementById('fieldsHeading').textContent = L.heading;
+    document.getElementById('poNumLabel').textContent = L.number;
+    document.getElementById('pricingLabel').textContent = L.pricing;
+
+    const show = (sel, on) => document.querySelectorAll(sel).forEach(el => { el.style.display = on ? '' : 'none'; });
+    show('.quote-only',    doc === 'quote');
+    show('.invoice-only',  doc === 'invoice');
+    show('.customer-only', customerFacing());
+    show('.vendor-only',   doc === 'po');
+    document.getElementById('totalsGrid').classList.toggle('wide', customerFacing());
+
+    // Nobody quotes or invoices without prices, so the choice is taken away.
+    const pricing = document.getElementById('fShowPricing');
+    if (customerFacing()) pricing.checked = true;
+    pricing.disabled = customerFacing();
+
+    recomputeTotal();
+    togglePricing();
+  }
+
+  /** Keeps the grand total honest: goods only on a PO, shipping added for the customer. */
+  function recomputeTotal() {
+    const num = id => Number((document.getElementById(id)?.value || '').replace(/[^0-9.\-]/g, '')) || 0;
+    const sub = document.getElementById('fSubtotal').value.trim();
+    if (sub === '') return;
+    const total = num('fSubtotal') + num('fTax') + (customerFacing() ? num('fShipping') : 0);
+    document.getElementById('fTotal').value = total.toFixed(2);
+    refreshOutput();
+  }
+
+  /** A quote usually comes before there is any order to paste. */
+  function startBlank() {
+    hideError();
+    populateFields({ vendor: '', order_number: '', date: new Date().toLocaleDateString('en-US'), items: [] });
+  }
+
 
   // ── Company settings ──────────────────────────────────────
   // The letterhead each tab prints from. Keys stay compatible with the
@@ -1087,10 +1210,26 @@
       }
     }
 
-    // Shipping is deliberately not read: the vendor is quoted goods only.
+    // The customer's own billing address. A PO ignores it — the PO bills
+    // StanchionWorld — but it is exactly who a quote or invoice is addressed to.
+    let billTo = '';
+    const btIdx = trimmed.findIndex(l => /^bill to:?$/i.test(l));
+    if (btIdx !== -1) {
+      const block = [];
+      for (let j = btIdx + 1; j < trimmed.length; j++) {
+        const l = trimmed[j];
+        if (!l) continue;
+        if (SECTION.test(l)) break;
+        block.push(l);
+      }
+      billTo = block.join('\n');
+    }
+
     const grab     = re => { const m = text.match(re); return m ? money(m[1]) : ''; };
     const subtotal = grab(/Subtotal:\s*\$?\s*([\d,]+\.\d{2})/i);
     const tax      = grab(/Tax:\s*\$?\s*([\d,]+\.\d{2})/i);
+    // Carried, but only a customer document spends it: a vendor PO is goods only.
+    const shipping = grab(/Shipping Cost:\s*\$?\s*([\d,]+\.\d{2})/i);
     const total    = (Number(subtotal || 0) + Number(tax || 0)).toFixed(2);
 
     return {
@@ -1099,8 +1238,9 @@
       vendor: 'Mr. Chain',
       ship_via: shipVia,
       ship_to: { name, company, street, city_state_zip: cityStateZip, country, phone },
+      bill_to: billTo,
       items: items.map(i => ({ ...i, options: i.options.join('\n') })),
-      pricing: { show: true, subtotal, tax, total: subtotal ? total : '' },
+      pricing: { show: true, subtotal, tax, shipping, total: subtotal ? total : '' },
       notes: '',
     };
   }
@@ -1120,12 +1260,15 @@
     document.getElementById('fCustomerRef').value = '';
     document.getElementById('fVendorContact').value = '';
     document.getElementById('fShipVia').value = d.ship_via || '';
+    document.getElementById('fBillTo').value = d.bill_to || '';
 
-    const pricing = d.pricing || { show: false, subtotal: '', tax: '', total: '' };
-    document.getElementById('fShowPricing').checked = !!pricing.show;
+    const pricing = d.pricing || { show: false, subtotal: '', tax: '', shipping: '', total: '' };
+    document.getElementById('fShowPricing').checked = customerFacing() || !!pricing.show;
     document.getElementById('fSubtotal').value = pricing.subtotal || '';
     document.getElementById('fTax').value      = pricing.tax || '';
+    document.getElementById('fShipping').value = pricing.shipping || '';
     document.getElementById('fTotal').value    = pricing.total || '';
+    recomputeTotal();
     togglePricing();
     document.getElementById('fName').value = d.ship_to?.name || '';
     document.getElementById('fCompany').value = d.ship_to?.company || '';
@@ -1227,13 +1370,18 @@
     const requiredBy    = v('fRequiredBy');
     const customerRef   = v('fCustomerRef');
     const shipVia       = v('fShipVia');
+    const validUntil    = v('fValidUntil');
+    const paymentTerms  = v('fPaymentTerms');
     const notes         = v('fNotes');
+    const L             = DOC_LABELS[currentDoc];
+    const forCustomer   = customerFacing();
 
     // Our price to the customer, shipping deliberately left out: the vendor is
     // being told what the goods sold for, not what the carrier charged.
     const priced   = document.getElementById('fShowPricing').checked;
     const subtotal = v('fSubtotal');
     const tax      = v('fTax');
+    const shipping = forCustomer ? v('fShipping') : '';
     const total    = v('fTotal');
 
     const shipToLines = [v('fName'), v('fCompany'), v('fStreet'), v('fCityStateZip'), v('fCountry'), v('fPhone')].filter(Boolean);
@@ -1244,7 +1392,8 @@
     const address    = s.address.trim() || ADDRESS_DEFAULTS[mod] || '';
     const addrLines  = address.split('\n').map(l => l.trim()).filter(Boolean);
     const buyerLines = [buyerName, ...addrLines];
-    const billTo     = buyerLines.join('\n');
+    const ourBillTo  = buyerLines.join('\n');
+    const custBillTo = v('fBillTo') || shipTo;
     const items      = collectItems();
 
     // A wordmark logo already carries the name, so the name only prints when
@@ -1261,8 +1410,10 @@
       ? `<tr><td style="padding:1px 0;font-size:12px;color:#555;text-align:left;">${esc(label)}</td>` +
         `<td style="padding:1px 0 1px 12px;font-size:12px;"><strong>${esc(val)}</strong></td></tr>`
       : '';
-    const metaRows = metaRow('PO number', poNum) + metaRow('Date', date)
-                   + metaRow('Required by', requiredBy) + metaRow('Our customer ref', customerRef)
+    const metaRows = metaRow(L.number, poNum) + metaRow('Date', date)
+                   + (currentDoc === 'quote' ? metaRow('Valid until', validUntil) : '')
+                   + (currentDoc === 'po' ? metaRow('Required by', requiredBy) : '')
+                   + metaRow(forCustomer ? 'Your reference' : 'Our customer ref', customerRef)
                    + metaRow('Ship via', shipVia);
 
     const MONEY = `${TD}text-align:right;width:92px;white-space:nowrap;`;
@@ -1299,24 +1450,42 @@
          <td colspan="4" style="${TD}text-align:right;font-weight:600;${strong ? `border-top:2px solid ${accent};` : ''}">${esc(label)}</td>
          <td colspan="2" style="${MONEY}${strong ? `border-top:2px solid ${accent};font-weight:700;` : ''}">${fmtMoney(val)}</td>
        </tr>`;
+    const goods     = subtotal !== '' ? Number(subtotal) : lineSum;
+    const grandTotal = total !== '' ? Number(total) : goods + Number(tax || 0) + Number(shipping || 0);
     const totalsHtml = priced
       ? `<tfoot>
-           ${totalRow('Subtotal', subtotal !== '' ? subtotal : lineSum)}
+           ${totalRow('Subtotal', goods)}
+           ${forCustomer ? totalRow('Shipping', shipping) : ''}
            ${totalRow('Tax', tax)}
-           ${totalRow('Total', total !== '' ? total : (Number(subtotal !== '' ? subtotal : lineSum) + Number(tax || 0)), true)}
+           ${totalRow('Total', grandTotal, true)}
          </tfoot>`
       : '';
 
-    // The bill-to is what tells Mr. Chain who is paying, so an unset address is
-    // called out rather than quietly dropped.
+    // On a PO the bill-to is us, and an unset address is called out rather than
+    // quietly dropped — it is what tells the supplier who is paying. On a quote
+    // or an invoice the bill-to is the customer and moves up beside the ship-to.
     const billToSet   = address !== '';
-    const billToBlock = billToSet
-      ? docBlock('Bill to', billTo)
+    const ourBillToBlock = billToSet
+      ? docBlock('Bill to', ourBillTo)
       : docBlock('Bill to', `${buyerName}\nSET YOUR BILL-TO ADDRESS IN COMPANY SETTINGS`, true);
-    const secondRow = (billToSet || currentTab === 'mrchain')
+
+    const leftBlock = forCustomer
+      ? docBlock('Bill to', custBillTo || '—')
+      : docBlock('Vendor', vendorBlock || '—');
+
+    const shipHead = forCustomer ? 'Ship to' : 'Ship to (drop-ship)';
+    const shipWarn = forCustomer
+      ? 'NO DELIVERY ADDRESS'
+      : 'NO DELIVERY ADDRESS — do not send this purchase order';
+    const rightBlock = shipTo ? docBlock(shipHead, shipTo) : docBlock(shipHead, shipWarn, true);
+
+    const secondRowCells = forCustomer
+      ? (currentDoc === 'invoice' && paymentTerms ? docBlock('Payment', paymentTerms) : '')
+      : ((billToSet || currentTab === 'mrchain') ? ourBillToBlock : '');
+    const secondRow = secondRowCells
       ? `<table style="width:100%;border-collapse:collapse;margin:0 0 16px;">
            <tr>
-             <td style="width:50%;vertical-align:top;padding-right:13px;">${billToBlock}</td>
+             <td style="width:50%;vertical-align:top;padding-right:13px;">${secondRowCells}</td>
              <td style="width:50%;vertical-align:top;padding-left:13px;"></td>
            </tr>
          </table>`
@@ -1344,7 +1513,7 @@
     <tr>
       <td style="vertical-align:top;padding:0 24px 12px 0;">${fromHtml}</td>
       <td style="vertical-align:top;padding:0 0 12px 0;text-align:right;white-space:nowrap;">
-        <div style="font-size:21px;font-weight:700;letter-spacing:2px;color:${accent};margin-bottom:6px;">PURCHASE ORDER</div>
+        <div style="font-size:21px;font-weight:700;letter-spacing:2px;color:${accent};margin-bottom:6px;">${L.title}</div>
         <table style="border-collapse:collapse;margin-left:auto;">${metaRows}</table>
       </td>
     </tr>
@@ -1352,12 +1521,8 @@
 
   <table style="width:100%;border-collapse:collapse;margin:16px 0;">
     <tr>
-      <td style="width:50%;vertical-align:top;padding-right:13px;">${docBlock('Vendor', vendorBlock || '—')}</td>
-      <td style="width:50%;vertical-align:top;padding-left:13px;">${
-        shipTo
-          ? docBlock('Ship to (drop-ship)', shipTo)
-          : docBlock('Ship to (drop-ship)', 'NO DELIVERY ADDRESS — do not send this purchase order', true)
-      }</td>
+      <td style="width:50%;vertical-align:top;padding-right:13px;">${leftBlock}</td>
+      <td style="width:50%;vertical-align:top;padding-left:13px;">${rightBlock}</td>
     </tr>
   </table>
 
@@ -1384,7 +1549,7 @@
 
     document.getElementById('poOutput').innerHTML = html;
     window._poHtml   = html;
-    window._poNumber = poNum || 'purchase-order';
+    window._poNumber = poNum || currentDoc;
 
     // ── Plain text fallback, for clients that refuse HTML ──
     const C = 4, P = 16, I = 52;
@@ -1404,23 +1569,28 @@
     // document rather than as one unbroken column.
     window._poPlainText = [
       [buyerLines.join('\n'), s.phone ? `Tel ${s.phone}` : '', s.email].filter(Boolean).join('\n'),
-      ['PURCHASE ORDER',
-        poNum       ? `PO number:        ${poNum}` : '',
-        date        ? `Date:             ${date}` : '',
-        requiredBy  ? `Required by:      ${requiredBy}` : '',
-        customerRef ? `Our customer ref: ${customerRef}` : '',
-        shipVia     ? `Ship via:         ${shipVia}` : '',
+      [L.title,
+        poNum       ? `${pad(L.number + ':', 18)}${poNum}` : '',
+        date        ? `${pad('Date:', 18)}${date}` : '',
+        currentDoc === 'quote' && validUntil ? `${pad('Valid until:', 18)}${validUntil}` : '',
+        currentDoc === 'po' && requiredBy    ? `${pad('Required by:', 18)}${requiredBy}` : '',
+        customerRef ? `${pad(forCustomer ? 'Your reference:' : 'Our customer ref:', 18)}${customerRef}` : '',
+        shipVia     ? `${pad('Ship via:', 18)}${shipVia}` : '',
       ].filter(Boolean).join('\n'),
-      ['VENDOR', vendorBlock || '—'].join('\n'),
-      ['SHIP TO (DROP-SHIP)', shipTo || 'NO DELIVERY ADDRESS — do not send this purchase order'].join('\n'),
+      forCustomer
+        ? ['BILL TO', custBillTo || '—'].join('\n')
+        : ['VENDOR', vendorBlock || '—'].join('\n'),
+      [forCustomer ? 'SHIP TO' : 'SHIP TO (DROP-SHIP)', shipTo || shipWarn].join('\n'),
+      currentDoc === 'invoice' && paymentTerms ? ['PAYMENT', paymentTerms].join('\n') : '',
       [pad('#', C) + pad('PART NUMBER', P) + pad('DESCRIPTION', I) + pad('QTY', 6) + (priced ? pad('UNIT', 11) + 'AMOUNT' : ''),
         '─'.repeat(C + P + I + (priced ? 23 : 6)),
         txtRows,
       ].join('\n'),
       priced ? [
-        `Subtotal: ${fmtMoney(subtotal !== '' ? subtotal : lineSum)}`,
+        `Subtotal: ${fmtMoney(goods)}`,
+        forCustomer && shipping !== '' ? `Shipping: ${fmtMoney(shipping)}` : '',
         tax !== '' ? `Tax:      ${fmtMoney(tax)}` : '',
-        `Total:    ${fmtMoney(total !== '' ? total : (Number(subtotal !== '' ? subtotal : lineSum) + Number(tax || 0)))}`,
+        `Total:    ${fmtMoney(grandTotal)}`,
       ].filter(Boolean).join('\n') : '',
       notes ? ['SPECIAL INSTRUCTIONS', notes].join('\n') : '',
       [s.footer, site].filter(Boolean).join('\n'),

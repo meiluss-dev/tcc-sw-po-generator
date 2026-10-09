@@ -241,6 +241,45 @@
       margin: -12px 0 18px;
     }
     .letterhead-note strong { color: #444; }
+    .saved-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .btn-small {
+      padding: 7px 14px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border: 1px solid #d0d5dd;
+      border-radius: 7px;
+      background: #fff;
+      color: #444;
+      cursor: pointer;
+    }
+    .btn-small:hover { border-color: #4a6fa5; color: #4a6fa5; }
+    .file-label { position: relative; overflow: hidden; display: inline-block; }
+    .file-label input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .saved-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .saved-table th {
+      text-align: left;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #999;
+      padding: 0 8px 6px 0;
+      font-weight: 700;
+    }
+    .saved-table td { padding: 7px 8px 7px 0; border-top: 1px solid #eee; vertical-align: middle; }
+    .saved-table .num { font-family: ui-monospace, Menlo, monospace; font-weight: 600; }
+    .saved-table .money { text-align: right; white-space: nowrap; }
+    .saved-empty { color: #999; font-size: 0.85rem; padding: 6px 0; }
+    .doc-pill {
+      display: inline-block;
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      background: #eef2f9;
+      color: #4a6fa5;
+    }
     .link-btn {
       background: none;
       border: none;
@@ -521,6 +560,25 @@
     </div>
   </div>
 
+  <!-- Saved documents -->
+  <div class="card" style="margin-bottom:16px;">
+    <button class="settings-toggle" onclick="toggleSaved(this)" id="savedToggle">🗂 Saved Documents</button>
+    <div class="settings-body" id="savedBody">
+      <p class="settings-note">
+        Saved on this browser. Copying or printing a document saves it automatically, so a
+        quote can be reopened and changed instead of rebuilt.
+      </p>
+      <div id="savedList"></div>
+      <div class="saved-actions">
+        <button class="btn-small" onclick="exportDocs()">Export all (.json)</button>
+        <label class="btn-small file-label">
+          Import…
+          <input type="file" accept="application/json" onchange="importDocs(this)" />
+        </label>
+      </div>
+    </div>
+  </div>
+
   <!-- Module Tabs -->
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('shopify', this)">Shopify</button>
@@ -697,6 +755,7 @@
     <div class="doc-actions">
       <button class="btn-generate" style="margin-bottom:0" onclick="generatePO()">Regenerate PO</button>
       <button class="btn-print" onclick="printPO()">Print / Save PDF</button>
+      <button class="btn-print" onclick="saveDoc(true)">Save</button>
     </div>
     <div class="po-output-wrap">
       <button class="btn-copy" id="btnCopy" onclick="copyPO()">Copy</button>
@@ -755,7 +814,7 @@
     const quoteMode = doc === 'quote';
     document.getElementById('pasteCard').classList.toggle('collapsed', quoteMode);
     showLetterheadNote();
-    if (quoteMode && document.getElementById('fieldsCard').style.display === 'none') startBlank();
+    if (!restoring && quoteMode && document.getElementById('fieldsCard').style.display === 'none') startBlank();
 
     recomputeTotal();
     togglePricing();
@@ -820,6 +879,7 @@
   /** A quote usually comes before there is any order to paste. */
   function startBlank() {
     hideError();
+    currentDocId = null;
     const fmt = d => `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
     const today = new Date();
     const blank = { code: '', description: '', qty: '', price: '', options: '' };
@@ -1018,8 +1078,208 @@
     refreshOutput();
   }
 
+  // ── Saved documents ───────────────────────────────────────
+  // A quote gets revised — a price moves, a line is added — and before this
+  // there was nowhere for one to live, so revising meant rebuilding it from
+  // nothing. Everything is kept in this browser; the export is how it leaves.
+  const DOCS_KEY = 'po_docs_v1';
+  const DOC_FIELDS = [
+    'fVendor', 'fVendorContact', 'fPoNum', 'fDate', 'fRequiredBy', 'fCustomerRef',
+    'fShipVia', 'fValidUntil', 'fPaymentTerms', 'fBillTo', 'fShipToBox',
+    'fName', 'fCompany', 'fStreet', 'fCityStateZip', 'fCountry', 'fPhone',
+    'fNotes', 'fShowPricing', 'fSubtotal', 'fDiscount', 'fShipping', 'fTax', 'fTotal',
+  ];
+
+  let currentDocId = null;
+  // Restoring drives the same switches a person would click, and a quote switch
+  // normally hands out a fresh number. This stops a reopened quote renumbering.
+  let restoring = false;
+
+  function listDocs() {
+    try { return JSON.parse(localStorage.getItem(DOCS_KEY)) || []; } catch (e) { return []; }
+  }
+  function writeDocs(all) {
+    try { localStorage.setItem(DOCS_KEY, JSON.stringify(all.slice(0, 200))); }
+    catch (e) { showError('Could not save — this browser is out of storage. Export and remove a few.'); }
+  }
+
+  function captureDoc() {
+    const fields = {};
+    DOC_FIELDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) fields[id] = el.type === 'checkbox' ? el.checked : el.value;
+    });
+    return {
+      id: currentDocId || `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      savedAt: new Date().toISOString(),
+      doc: currentDoc,
+      tab: currentTab,
+      fields,
+      // Whether each figure was typed by hand, kept so a reopened quote behaves
+      // the way it did when it was written: an auto-summed subtotal goes on
+      // following the lines, a hand-set one goes on standing.
+      touched: {
+        fSubtotal: document.getElementById('fSubtotal').dataset.touched === '1',
+        fTotal: document.getElementById('fTotal').dataset.touched === '1',
+      },
+      items: collectItems(),
+    };
+  }
+
+  /** Saves, and on an explicit Save says so. Called by Copy and Print too. */
+  function saveDoc(announce) {
+    const rec = captureDoc();
+    const worthKeeping = rec.items.length || rec.fields.fPoNum || rec.fields.fName || rec.fields.fCompany;
+    if (!worthKeeping) return;
+
+    const all = listDocs();
+    const i = all.findIndex(d => d.id === rec.id);
+    if (i >= 0) all[i] = rec; else all.unshift(rec);
+    writeDocs(all);
+    currentDocId = rec.id;
+    renderSaved();
+
+    if (announce) {
+      const btn = [...document.querySelectorAll('.btn-print')].find(b => /^Save/.test(b.textContent));
+      if (btn) { btn.textContent = 'Saved'; setTimeout(() => { btn.textContent = 'Save'; }, 1500); }
+    }
+  }
+
+  function openDoc(id) {
+    const rec = listDocs().find(d => d.id === id);
+    if (!rec) return;
+    restoring = true;
+    try {
+      selectTab(rec.tab || 'volusion');
+      selectDoc(rec.doc || 'quote');
+      const items = rec.items?.length ? rec.items : [{}];
+      populateFields({
+        vendor: '', order_number: '', date: '',
+        items: items.map(i => ({
+          code: i.code || '', description: i.desc || '', qty: i.qty || '',
+          price: i.price || '', options: i.options || '',
+        })),
+      });
+      Object.entries(rec.fields || {}).forEach(([id2, val]) => {
+        const el = document.getElementById(id2);
+        if (!el) return;
+        if (el.type === 'checkbox') el.checked = !!val; else el.value = val;
+      });
+      const typed = rec.touched || {};
+      document.getElementById('fSubtotal').dataset.touched = typed.fSubtotal ? '1' : '';
+      document.getElementById('fTotal').dataset.touched = typed.fTotal ? '1' : '';
+    } finally {
+      restoring = false;
+    }
+    currentDocId = rec.id;
+    togglePricing();
+    generatePO();
+    document.getElementById('fieldsCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function duplicateDoc(id) {
+    openDoc(id);
+    currentDocId = null;            // the copy saves as its own record
+    if (currentDoc === 'quote') document.getElementById('fPoNum').value = nextQuoteNumber();
+    generatePO();
+  }
+
+  function deleteDoc(id) {
+    const rec = listDocs().find(d => d.id === id);
+    const what = rec ? `${DOC_LABELS[rec.doc]?.title || 'document'} ${rec.fields?.fPoNum || ''}`.trim() : 'this document';
+    if (!confirm(`Delete ${what}? This cannot be undone.`)) return;
+    writeDocs(listDocs().filter(d => d.id !== id));
+    if (currentDocId === id) currentDocId = null;
+    renderSaved();
+  }
+
+  function selectTab(tab) {
+    const btn = [...document.querySelectorAll('.tab-btn')].find(b => (b.getAttribute('onclick') || '').includes(`'${tab}'`));
+    if (btn) switchTab(tab, btn);
+  }
+  function selectDoc(doc) {
+    const btn = [...document.querySelectorAll('.doc-btn')].find(b => (b.getAttribute('onclick') || '').includes(`'${doc}'`));
+    if (btn) switchDoc(doc, btn);
+  }
+
+  function renderSaved() {
+    const all = listDocs();
+    document.getElementById('savedToggle').textContent =
+      `🗂 Saved Documents${all.length ? ` (${all.length})` : ''}` +
+      (document.getElementById('savedBody').classList.contains('open') ? ' ▲' : '');
+
+    const el = document.getElementById('savedList');
+    if (!all.length) {
+      el.innerHTML = '<p class="saved-empty">Nothing saved yet.</p>';
+      return;
+    }
+    el.innerHTML = `<table class="saved-table">
+      <thead><tr><th>Type</th><th>Number</th><th>Customer</th><th class="money">Total</th><th>Saved</th><th></th></tr></thead>
+      <tbody>${all.map(d => {
+        const f = d.fields || {};
+        const who = f.fCompany || f.fName || f.fVendor || '—';
+        const when = new Date(d.savedAt);
+        const stamp = Number.isNaN(when.getTime()) ? '' : when.toLocaleDateString('en-US');
+        return `<tr>
+          <td><span class="doc-pill">${esc((DOC_LABELS[d.doc]?.title || d.doc || '').toLowerCase())}</span></td>
+          <td class="num">${esc(f.fPoNum || '—')}</td>
+          <td>${esc(who)}</td>
+          <td class="money">${f.fTotal ? esc(fmtMoney(f.fTotal)) : ''}</td>
+          <td>${esc(stamp)}</td>
+          <td style="text-align:right;white-space:nowrap;">
+            <button class="link-btn" onclick="openDoc('${d.id}')">Open</button>
+            &nbsp;<button class="link-btn" onclick="duplicateDoc('${d.id}')">Copy</button>
+            &nbsp;<button class="link-btn" style="color:#c00" onclick="deleteDoc('${d.id}')">Delete</button>
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  }
+
+  function toggleSaved(btn) {
+    document.getElementById('savedBody').classList.toggle('open');
+    renderSaved();
+  }
+
+  /** Browser storage is per machine and clearable, so the export is the backup. */
+  function exportDocs() {
+    const blob = new Blob([JSON.stringify(listDocs(), null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `documents-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+
+  function importDocs(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      let incoming;
+      try { incoming = JSON.parse(e.target.result); } catch (err) { incoming = null; }
+      if (!Array.isArray(incoming)) { showError('That file is not a document export.'); return; }
+      const all = listDocs();
+      // Same id means the same document, so an import updates rather than doubles.
+      incoming.forEach(rec => {
+        if (!rec || !rec.id) return;
+        const i = all.findIndex(d => d.id === rec.id);
+        if (i >= 0) all[i] = rec; else all.push(rec);
+      });
+      all.sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
+      writeDocs(all);
+      renderSaved();
+      hideError();
+    };
+    reader.readAsText(file);
+    input.value = '';
+  }
+
   // ── Parse ─────────────────────────────────────────────────
   function parseOrder() {
+    currentDocId = null;
     const text = document.getElementById('pasteArea').value.trim();
     if (!text) { showError('Please paste your order text first.'); return; }
     hideError();
@@ -1783,6 +2043,7 @@
   /** Opens the document on its own so the browser's print dialog can save it as a PDF. */
   function printPO() {
     if (!window._poHtml) return;
+    saveDoc(false);
     const w = window.open('', '_blank', 'width=860,height=1000');
     if (!w) { showError('Allow pop-ups for this page to print the purchase order.'); return; }
     w.document.write(
@@ -1813,6 +2074,7 @@
   // wall of text. Plain text rides along in the same clipboard write for the
   // clients that will not take HTML.
   async function copyPO() {
+    saveDoc(false);
     const html = window._poHtml || document.getElementById('poOutput').innerHTML;
     const text = window._poPlainText || document.getElementById('poOutput').innerText;
     let copied = false;
@@ -1860,6 +2122,7 @@
 
   loadSettingsForm();
   showLetterheadNote();
+  renderSaved();
 </script>
 </body>
 </html>
